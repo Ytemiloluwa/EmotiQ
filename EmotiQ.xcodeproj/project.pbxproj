@@ -7,11 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A7270B0F2E429FC700676A5A /* OneSignalNotificationServiceExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A7270B082E429FC700676A5A /* OneSignalNotificationServiceExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A7270B182E42A5EE00676A5A /* OneSignalExtension in Frameworks */ = {isa = PBXBuildFile; productRef = A7270B172E42A5EE00676A5A /* OneSignalExtension */; };
+		A7270B1A2E42A5EE00676A5A /* OneSignalFramework in Frameworks */ = {isa = PBXBuildFile; productRef = A7270B192E42A5EE00676A5A /* OneSignalFramework */; };
+		A7270B1C2E42A5EE00676A5A /* OneSignalInAppMessages in Frameworks */ = {isa = PBXBuildFile; productRef = A7270B1B2E42A5EE00676A5A /* OneSignalInAppMessages */; };
 		A7C5C9912E3ECAF600EE8D2B /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = A7C5C9902E3ECAF600EE8D2B /* RevenueCat */; };
 		A7C5C9932E3ECAF600EE8D2B /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = A7C5C9922E3ECAF600EE8D2B /* RevenueCatUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		A7270B0D2E429FC700676A5A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A75325962E3BBE0E00735737 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A7270B072E429FC700676A5A;
+			remoteInfo = OneSignalNotificationServiceExtension;
+		};
 		A75325B62E3BBE1000735737 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A75325962E3BBE0E00735737 /* Project object */;
@@ -28,13 +39,35 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A7270B142E429FC700676A5A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A7270B0F2E429FC700676A5A /* OneSignalNotificationServiceExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A7270B082E429FC700676A5A /* OneSignalNotificationServiceExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OneSignalNotificationServiceExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A753259E2E3BBE0E00735737 /* EmotiQ.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EmotiQ.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A75325B52E3BBE1000735737 /* EmotiQTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EmotiQTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A75325BF2E3BBE1000735737 /* EmotiQUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EmotiQUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A7270B132E429FC700676A5A /* Exceptions for "OneSignalNotificationServiceExtension" folder in "OneSignalNotificationServiceExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A7270B072E429FC700676A5A /* OneSignalNotificationServiceExtension */;
+		};
 		A75325C72E3BBE1000735737 /* Exceptions for "EmotiQ" folder in "EmotiQ" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -45,6 +78,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A7270B092E429FC700676A5A /* OneSignalNotificationServiceExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A7270B132E429FC700676A5A /* Exceptions for "OneSignalNotificationServiceExtension" folder in "OneSignalNotificationServiceExtension" target */,
+			);
+			path = OneSignalNotificationServiceExtension;
+			sourceTree = "<group>";
+		};
 		A75325A02E3BBE0E00735737 /* EmotiQ */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -66,11 +107,21 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A7270B052E429FC700676A5A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7270B182E42A5EE00676A5A /* OneSignalExtension in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A753259B2E3BBE0E00735737 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A7C5C9932E3ECAF600EE8D2B /* RevenueCatUI in Frameworks */,
+				A7270B1A2E42A5EE00676A5A /* OneSignalFramework in Frameworks */,
+				A7270B1C2E42A5EE00676A5A /* OneSignalInAppMessages in Frameworks */,
 				A7C5C9912E3ECAF600EE8D2B /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -98,6 +149,7 @@
 				A75325A02E3BBE0E00735737 /* EmotiQ */,
 				A75325B82E3BBE1000735737 /* EmotiQTests */,
 				A75325C22E3BBE1000735737 /* EmotiQUITests */,
+				A7270B092E429FC700676A5A /* OneSignalNotificationServiceExtension */,
 				A753259F2E3BBE0E00735737 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -108,6 +160,7 @@
 				A753259E2E3BBE0E00735737 /* EmotiQ.app */,
 				A75325B52E3BBE1000735737 /* EmotiQTests.xctest */,
 				A75325BF2E3BBE1000735737 /* EmotiQUITests.xctest */,
+				A7270B082E429FC700676A5A /* OneSignalNotificationServiceExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -115,6 +168,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A7270B072E429FC700676A5A /* OneSignalNotificationServiceExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7270B102E429FC700676A5A /* Build configuration list for PBXNativeTarget "OneSignalNotificationServiceExtension" */;
+			buildPhases = (
+				A7270B042E429FC700676A5A /* Sources */,
+				A7270B052E429FC700676A5A /* Frameworks */,
+				A7270B062E429FC700676A5A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A7270B092E429FC700676A5A /* OneSignalNotificationServiceExtension */,
+			);
+			name = OneSignalNotificationServiceExtension;
+			packageProductDependencies = (
+				A7270B172E42A5EE00676A5A /* OneSignalExtension */,
+			);
+			productName = OneSignalNotificationServiceExtension;
+			productReference = A7270B082E429FC700676A5A /* OneSignalNotificationServiceExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		A753259D2E3BBE0E00735737 /* EmotiQ */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A75325C82E3BBE1000735737 /* Build configuration list for PBXNativeTarget "EmotiQ" */;
@@ -122,10 +198,12 @@
 				A753259A2E3BBE0E00735737 /* Sources */,
 				A753259B2E3BBE0E00735737 /* Frameworks */,
 				A753259C2E3BBE0E00735737 /* Resources */,
+				A7270B142E429FC700676A5A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A7270B0E2E429FC700676A5A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A75325A02E3BBE0E00735737 /* EmotiQ */,
@@ -134,6 +212,8 @@
 			packageProductDependencies = (
 				A7C5C9902E3ECAF600EE8D2B /* RevenueCat */,
 				A7C5C9922E3ECAF600EE8D2B /* RevenueCatUI */,
+				A7270B192E42A5EE00676A5A /* OneSignalFramework */,
+				A7270B1B2E42A5EE00676A5A /* OneSignalInAppMessages */,
 			);
 			productName = EmotiQ;
 			productReference = A753259E2E3BBE0E00735737 /* EmotiQ.app */;
@@ -195,6 +275,9 @@
 				LastSwiftUpdateCheck = 1610;
 				LastUpgradeCheck = 1610;
 				TargetAttributes = {
+					A7270B072E429FC700676A5A = {
+						CreatedOnToolsVersion = 16.1;
+					};
 					A753259D2E3BBE0E00735737 = {
 						CreatedOnToolsVersion = 16.1;
 					};
@@ -219,6 +302,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A7C5C98F2E3ECAF600EE8D2B /* XCRemoteSwiftPackageReference "purchases-ios" */,
+				A7270B162E42A5EE00676A5A /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A753259F2E3BBE0E00735737 /* Products */;
@@ -228,11 +312,19 @@
 				A753259D2E3BBE0E00735737 /* EmotiQ */,
 				A75325B42E3BBE1000735737 /* EmotiQTests */,
 				A75325BE2E3BBE1000735737 /* EmotiQUITests */,
+				A7270B072E429FC700676A5A /* OneSignalNotificationServiceExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A7270B062E429FC700676A5A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A753259C2E3BBE0E00735737 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -257,6 +349,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A7270B042E429FC700676A5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A753259A2E3BBE0E00735737 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -281,6 +380,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A7270B0E2E429FC700676A5A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A7270B072E429FC700676A5A /* OneSignalNotificationServiceExtension */;
+			targetProxy = A7270B0D2E429FC700676A5A /* PBXContainerItemProxy */;
+		};
 		A75325B72E3BBE1000735737 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A753259D2E3BBE0E00735737 /* EmotiQ */;
@@ -294,6 +398,61 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A7270B112E429FC700676A5A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OneSignalNotificationServiceExtension/OneSignalNotificationServiceExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4Q6S759NWS;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OneSignalNotificationServiceExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OneSignalNotificationServiceExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Temi.EmotiQ.OneSignalNotificationServiceExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A7270B122E429FC700676A5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OneSignalNotificationServiceExtension/OneSignalNotificationServiceExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4Q6S759NWS;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OneSignalNotificationServiceExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OneSignalNotificationServiceExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Temi.EmotiQ.OneSignalNotificationServiceExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		A75325C92E3BBE1000735737 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -333,7 +492,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = EmotiQ/EmotiQ.entitlements;
+				CODE_SIGN_ENTITLEMENTS = EmotiQ/EmotiQRelease.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -558,6 +717,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A7270B102E429FC700676A5A /* Build configuration list for PBXNativeTarget "OneSignalNotificationServiceExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7270B112E429FC700676A5A /* Debug */,
+				A7270B122E429FC700676A5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A75325992E3BBE0E00735737 /* Build configuration list for PBXProject "EmotiQ" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -597,6 +765,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A7270B162E42A5EE00676A5A /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/OneSignal/OneSignal-iOS-SDK";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.2.14;
+			};
+		};
 		A7C5C98F2E3ECAF600EE8D2B /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/RevenueCat/purchases-ios.git";
@@ -608,6 +784,21 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A7270B172E42A5EE00676A5A /* OneSignalExtension */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A7270B162E42A5EE00676A5A /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */;
+			productName = OneSignalExtension;
+		};
+		A7270B192E42A5EE00676A5A /* OneSignalFramework */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A7270B162E42A5EE00676A5A /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */;
+			productName = OneSignalFramework;
+		};
+		A7270B1B2E42A5EE00676A5A /* OneSignalInAppMessages */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A7270B162E42A5EE00676A5A /* XCRemoteSwiftPackageReference "OneSignal-iOS-SDK" */;
+			productName = OneSignalInAppMessages;
+		};
 		A7C5C9902E3ECAF600EE8D2B /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A7C5C98F2E3ECAF600EE8D2B /* XCRemoteSwiftPackageReference "purchases-ios" */;
