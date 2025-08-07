@@ -9,26 +9,28 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
+    @State private var showVoiceRecording = false
     
     var body: some View {
         NavigationView {
             ZStack {
                 // Background gradient
                 LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color(red: 0.4, green: 0.2, blue: 0.7),  // Darker Purple
-                        Color(red: 0.2, green: 0.8, blue: 0.9)   // Cyan
-                    ]),
+                    colors: [
+                        Color(hex: Config.UI.primaryPurple),
+                        Color(hex: Config.UI.primaryCyan)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
                 
-                VStack(spacing: 30) {
-                    // App Logo and Title
+                VStack(spacing: 40) {
+                    // Header
                     VStack(spacing: 16) {
+                        // App Logo/Icon
                         Image(systemName: "brain.head.profile")
-                            .font(.system(size: 80))
+                            .font(.system(size: 60))
                             .foregroundColor(.white)
                         
                         Text("EmotiQ")
@@ -37,72 +39,123 @@ struct ContentView: View {
                             .foregroundColor(.white)
                         
                         Text("AI Emotional Intelligence Coach")
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.9))
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.center)
                     }
+                    .padding(.top, 60)
                     
                     Spacer()
                     
-                    // Main Action Buttons
-                    VStack(spacing: 20) {
-                        Button(action: {
-                            viewModel.startVoiceAnalysis()
-                        }) {
-                            HStack {
-                                Image(systemName: "mic.fill")
-                                Text("Start Voice Check-In")
+                    // Main Content
+                    VStack(spacing: 24) {
+                        // Daily Usage Status
+                        if viewModel.subscriptionStatus == .free {
+                            VStack(spacing: 8) {
+                                Text("Daily Check-ins Remaining")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.8))
+                                
+                                Text("\(viewModel.dailyUsageRemaining)")
+                                    .font(.title2)
                                     .fontWeight(.semibold)
+                                    .foregroundColor(.white)
                             }
-                            .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.white)
-                            .foregroundColor(Color(red: 0.6, green: 0.3, blue: 0.9))
-                            .cornerRadius(12)
-                        }
-                        
-                        Button(action: {
-                            viewModel.showInsights()
-                        }) {
-                            HStack {
-                                Image(systemName: "chart.line.uptrend.xyaxis")
-                                Text("View Emotional Insights")
-                                    .fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.white.opacity(0.2))
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .overlay(
+                            .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white, lineWidth: 1)
+                                    .fill(Color.black.opacity(0.2))
                             )
                         }
+                        
+                        // Primary Action Button
+                        Button(action: {
+                            if viewModel.canPerformVoiceAnalysis {
+                                showVoiceRecording = true
+                            } else {
+                                viewModel.showUpgradePrompt = true
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "mic.fill")
+                                    .font(.title2)
+                                
+                                Text("Start Voice Check-In")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(Color(hex: Config.UI.primaryPurple))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color.white)
+                            .cornerRadius(28)
+                        }
+                        .disabled(viewModel.isLoading)
+                        
+                        // Secondary Action Button
+                        Button(action: {
+                            // TODO: Navigate to insights view
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .font(.title2)
+                                
+                                Text("View Emotional Insights")
+                                    .font(.headline)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                RoundedRectangle(cornerRadius: 28)
+                                    .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                            )
+                        }
+                        .disabled(viewModel.isLoading)
                     }
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, 32)
                     
                     Spacer()
                     
                     // Subscription Status
                     VStack(spacing: 8) {
-                        Text(viewModel.subscriptionStatus.displayName)
+                        Text("Current Plan: \(viewModel.subscriptionStatus.displayName)")
                             .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.white.opacity(0.7))
                         
                         if viewModel.subscriptionStatus == .free {
-                            Text("Daily check-ins remaining: \(viewModel.dailyCheckInsRemaining)")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.7))
+                            Button("Upgrade to Premium") {
+                                viewModel.showUpgradePrompt = true
+                            }
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .underline()
                         }
                     }
+                    .padding(.bottom, 40)
                 }
-                .padding()
             }
             .navigationBarHidden(true)
         }
+        .sheet(isPresented: $showVoiceRecording) {
+            VoiceRecordingView()
+        }
+        .alert("Upgrade Required", isPresented: $viewModel.showUpgradePrompt) {
+            Button("Upgrade Now") {
+                // TODO: Show subscription paywall
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You've reached your daily limit of \(Config.Subscription.freeDailyLimit) voice check-ins. Upgrade to Premium for unlimited access.")
+        }
+        .alert("Error", isPresented: $viewModel.showError) {
+            Button("OK") { }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
         .onAppear {
-            viewModel.loadUserData()
+            viewModel.loadInitialData()
         }
     }
 }

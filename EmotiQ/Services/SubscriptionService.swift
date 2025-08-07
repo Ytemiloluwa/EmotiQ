@@ -9,89 +9,256 @@ import Foundation
 import Combine
 
 protocol SubscriptionServiceProtocol {
-    var subscriptionStatusPublisher: AnyPublisher<SubscriptionStatus, Never> { get }
+    var currentSubscription: AnyPublisher<SubscriptionStatus, Never> { get }
+    var dailyUsageRemaining: AnyPublisher<Int, Never> { get }
     func checkSubscriptionStatus() -> AnyPublisher<SubscriptionStatus, Error>
-    func purchaseSubscription(_ status: SubscriptionStatus) -> AnyPublisher<Bool, Error>
+    func purchaseSubscription(_ tier: SubscriptionStatus) -> AnyPublisher<Bool, Error>
     func restorePurchases() -> AnyPublisher<SubscriptionStatus, Error>
+    func canPerformVoiceAnalysis() -> Bool
+    func incrementDailyUsage()
+    func getRemainingDailyUsage() -> Int
 }
 
 class SubscriptionService: SubscriptionServiceProtocol {
-    @Published private var currentSubscriptionStatus: SubscriptionStatus = .free
-    private let revenueCatService = RevenueCatService()
+    @Published private var subscriptionStatus: SubscriptionStatus = .free
+    @Published private var dailyUsage: Int = 0
+    private let revenueCatService: RevenueCatServiceProtocol
+    private let persistenceController: PersistenceController
+    private var cancellables = Set<AnyCancellable>()
     
-    var subscriptionStatusPublisher: AnyPublisher<SubscriptionStatus, Never> {
-        $currentSubscriptionStatus.eraseToAnyPublisher()
+    var currentSubscription: AnyPublisher<SubscriptionStatus, Never> {
+        $subscriptionStatus.eraseToAnyPublisher()
     }
     
-    init() {
-        setupRevenueCat()
-    }
-    
-    private func setupRevenueCat() {
-        // RevenueCat will be configured when API keys are added
-        revenueCatService.configure()
-    }
-    
-    func checkSubscriptionStatus() -> AnyPublisher<SubscriptionStatus, Error> {
-        return revenueCatService.getCustomerInfo()
-            .map { [weak self] customerInfo in
-                let status = self?.determineSubscriptionStatus(from: customerInfo) ?? .free
-                self?.currentSubscriptionStatus = status
-                return status
-            }
-            .catch { _ in
-                Just(SubscriptionStatus.free)
-                    .setFailureType(to: Error.self)
+    var dailyUsageRemaining: AnyPublisher<Int, Never> {
+        $dailyUsage
+            .map { usage in
+                max(0, Config.Subscription.freeDailyLimit - usage)
             }
             .eraseToAnyPublisher()
     }
     
-    func purchaseSubscription(_ status: SubscriptionStatus) -> AnyPublisher<Bool, Error> {
-        guard status != .free else {
+    init(revenueCatService: RevenueCatServiceProtocol = RevenueCatService(),
+         persistenceController: PersistenceController = .shared) {
+        self.revenueCatService = revenueCatService
+        self.persistenceController = persistenceController
+        
+        self.revenueCatService.configure()
+        loadInitialSubscriptionStatus()
+        loadDailyUsage()
+    }
+    
+    private func loadInitialSubscriptionStatus() {
+        // Load from Core Data first
+        if let user = persistenceController.getCurrentUser() {
+            let status = SubscriptionStatus(rawValue: user.subscriptionStatus ?? "free") ?? .free
+            subscriptionStatus = status
+            
+            if Config.isDebugMode {
+                print("Loaded subscription status from Core Data: \(status.displayName)")
+            }
+        }
+        
+        // Then check with RevenueCat for latest status
+        checkSubscriptionStatus()
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        if Config.isDebugMode {
+                            print(" Failed to load subscription status: \(error)")
+                        }
+                    }
+                },
+                receiveValue: { [weak self] status in
+                    self?.subscriptionStatus = status
+                    self?.updateUserSubscriptionStatus(status)
+                }
+            )
+            .store(in: &cancellables)
+    }
+    
+    private func loadDailyUsage() {
+        if let user = persistenceController.getCurrentUser() {
+            dailyUsage = Int(user.dailyCheckInsUsed)
+            
+            if Config.isDebugMode {
+                print("Loaded daily usage: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+            }
+        }
+    }
+    
+    private func updateUserSubscriptionStatus(_ status: SubscriptionStatus) {
+        let user = persistenceController.createUserIfNeeded()
+        user.subscriptionStatus = status.rawValue
+        persistenceController.save()
+        
+        if Config.isDebugMode {
+            print("💾 Updated user subscription status to: \(status.displayName)")
+        }
+    }
+    
+    func checkSubscriptionStatus() -> AnyPublisher<SubscriptionStatus, Error> {
+        return revenueCatService.getCustomerInfo()
+            .map { customerInfo in
+                // Check for Pro subscription first (higher tier)
+                if customerInfo.activeSubscriptions.contains(Config.Subscription.proMonthlyProductID) {
+                    return SubscriptionStatus.pro
+                } else if customerInfo.activeSubscriptions.contains(Config.Subscription.premiumMonthlyProductID) {
+                    return SubscriptionStatus.premium
+                } else {
+                    return SubscriptionStatus.free
+                }
+            }
+            .eraseToAnyPublisher()
+    }
+    
+    func purchaseSubscription(_ tier: SubscriptionStatus) -> AnyPublisher<Bool, Error> {
+        guard tier != .free else {
             return Just(false)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
         }
         
-        return revenueCatService.purchaseProduct(status.productIdentifier)
-            .map { [weak self] success in
+        if Config.isDebugMode {
+            print("🛒 Attempting to purchase: \(tier.displayName) (\(tier.monthlyPrice))")
+        }
+        
+        return revenueCatService.purchaseProduct(tier.productIdentifier)
+            .handleEvents(receiveOutput: { [weak self] success in
                 if success {
-                    self?.currentSubscriptionStatus = status
+                    self?.subscriptionStatus = tier
+                    self?.updateUserSubscriptionStatus(tier)
+                    
+                    if Config.isDebugMode {
+                        print("Purchase successful: \(tier.displayName)")
+                    }
+                } else {
+                    if Config.isDebugMode {
+                        print("Purchase failed for: \(tier.displayName)")
+                    }
                 }
-                return success
-            }
+            })
             .eraseToAnyPublisher()
     }
     
     func restorePurchases() -> AnyPublisher<SubscriptionStatus, Error> {
+        if Config.isDebugMode {
+            print(" Restoring purchases...")
+        }
+        
         return revenueCatService.restorePurchases()
-            .map { [weak self] customerInfo in
-                let status = self?.determineSubscriptionStatus(from: customerInfo) ?? .free
-                self?.currentSubscriptionStatus = status
-                return status
+            .map { customerInfo in
+                if customerInfo.activeSubscriptions.contains(Config.Subscription.proMonthlyProductID) {
+                    return SubscriptionStatus.pro
+                } else if customerInfo.activeSubscriptions.contains(Config.Subscription.premiumMonthlyProductID) {
+                    return SubscriptionStatus.premium
+                } else {
+                    return SubscriptionStatus.free
+                }
             }
+            .handleEvents(receiveOutput: { [weak self] status in
+                self?.subscriptionStatus = status
+                self?.updateUserSubscriptionStatus(status)
+                
+                if Config.isDebugMode {
+                    print(" Restored subscription: \(status.displayName)")
+                }
+            })
             .eraseToAnyPublisher()
     }
     
-    private func determineSubscriptionStatus(from customerInfo: CustomerInfo) -> SubscriptionStatus {
-        // Check for active subscriptions
-        if customerInfo.activeSubscriptions.contains("emotiq_pro_monthly") {
-            return .pro
-        } else if customerInfo.activeSubscriptions.contains("emotiq_premium_monthly") {
-            return .premium
-        } else {
-            return .free
+    // MARK: - Daily Usage Management
+    
+    func canPerformVoiceAnalysis() -> Bool {
+        // Premium and Pro users have unlimited access
+        if subscriptionStatus != .free {
+            return true
         }
+        
+        // Check daily limit for free users
+        let user = persistenceController.createUserIfNeeded()
+        return persistenceController.canPerformDailyCheckIn(for: user)
+    }
+    
+    func incrementDailyUsage() {
+        // Only increment for free users
+        guard subscriptionStatus == .free else { return }
+        
+        let user = persistenceController.createUserIfNeeded()
+        persistenceController.incrementDailyUsage(for: user)
+        
+        // Update local state
+        dailyUsage = Int(user.dailyCheckInsUsed)
+        
+        if Config.isDebugMode {
+            print("Daily usage incremented: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+        }
+    }
+    
+    func getRemainingDailyUsage() -> Int {
+        // Unlimited for premium users
+        if subscriptionStatus != .free {
+            return -1 // Indicates unlimited
+        }
+        
+        return max(0, Config.Subscription.freeDailyLimit - dailyUsage)
+    }
+    
+    // MARK: - Subscription Benefits
+    
+    func hasUnlimitedAccess() -> Bool {
+        return subscriptionStatus != .free
+    }
+    
+    func hasVoiceCloning() -> Bool {
+        return subscriptionStatus == .pro
+    }
+    
+    func hasAdvancedAnalytics() -> Bool {
+        return subscriptionStatus != .free
+    }
+    
+    func hasPersonalizedCoaching() -> Bool {
+        return subscriptionStatus != .free
+    }
+    
+    func canExportData() -> Bool {
+        return subscriptionStatus == .pro
+    }
+    
+    // MARK: - Pricing Information
+    
+    func getSubscriptionPricing() -> [(tier: SubscriptionStatus, price: String, features: [String])] {
+        return [
+            (tier: .free, price: "Free", features: [
+                "3 daily voice check-ins",
+                "Basic emotion tracking",
+                "Simple insights"
+            ]),
+            (tier: .premium, price: Config.Subscription.premiumPrice + "/month", features: [
+                "Unlimited voice check-ins",
+                "Advanced emotion analysis",
+                "Personalized coaching",
+                "ElevenLabs voice affirmations"
+            ]),
+            (tier: .pro, price: Config.Subscription.proPrice + "/month", features: [
+                "Everything in Premium",
+                "Custom voice cloning",
+                "Advanced analytics",
+                "Data export",
+                "Priority support"
+            ])
+        ]
     }
 }
 
-// Temporary CustomerInfo struct until RevenueCat is properly integrated
+// CustomerInfo struct for RevenueCat integration
 struct CustomerInfo {
-    let activeSubscriptions: Set<String>
+    let activeSubscriptions: [String]
     let originalPurchaseDate: Date?
     let latestExpirationDate: Date?
     
-    init(activeSubscriptions: Set<String> = [], originalPurchaseDate: Date? = nil, latestExpirationDate: Date? = nil) {
+    init(activeSubscriptions: [String] = [], originalPurchaseDate: Date? = nil, latestExpirationDate: Date? = nil) {
         self.activeSubscriptions = activeSubscriptions
         self.originalPurchaseDate = originalPurchaseDate
         self.latestExpirationDate = latestExpirationDate

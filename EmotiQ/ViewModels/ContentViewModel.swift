@@ -6,110 +6,104 @@
 //
 
 import Foundation
+import Combine
 
 class ContentViewModel: BaseViewModel {
     @Published var subscriptionStatus: SubscriptionStatus = .free
-    @Published var dailyCheckInsRemaining: Int = 3
-    @Published var emotionalData: [EmotionalData] = []
+    @Published var dailyUsageRemaining: Int = 3
+    @Published var canPerformVoiceAnalysis: Bool = true
+    @Published var showUpgradePrompt: Bool = false
     
-    private let subscriptionService = SubscriptionService()
-    private let emotionAnalysisService = EmotionAnalysisService()
+    private let subscriptionService: SubscriptionServiceProtocol
+    private let persistenceController: PersistenceController
     
-    override init() {
+    init(subscriptionService: SubscriptionServiceProtocol = SubscriptionService(),
+         persistenceController: PersistenceController = .shared) {
+        self.subscriptionService = subscriptionService
+        self.persistenceController = persistenceController
         super.init()
-        setupSubscriptions()
-    }
-    
-    private func setupSubscriptions() {
-        subscriptionService.subscriptionStatusPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] status in
-                self?.subscriptionStatus = status
-                self?.updateDailyLimits()
-            }
-            .store(in: &cancellables)
-    }
-    
-    func loadUserData() {
-        setLoading(true)
         
-        // Load subscription status
+        setupBindings()
+    }
+    
+    private func setupBindings() {
+        // Bind subscription status
+        subscriptionService.currentSubscription
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.subscriptionStatus, on: self)
+            .store(in: &cancellables)
+        
+        // Bind daily usage remaining
+        subscriptionService.dailyUsageRemaining
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.dailyUsageRemaining, on: self)
+            .store(in: &cancellables)
+        
+        // Update voice analysis availability
+        Publishers.CombineLatest(
+            subscriptionService.currentSubscription,
+            subscriptionService.dailyUsageRemaining
+        )
+        .map { subscription, remaining in
+            subscription != .free || remaining > 0
+        }
+        .receive(on: DispatchQueue.main)
+        .assign(to: \.canPerformVoiceAnalysis, on: self)
+        .store(in: &cancellables)
+    }
+    
+    func loadInitialData() {
+        isLoading = true
+        
+        // Ensure user exists in Core Data
+        let _ = persistenceController.createUserIfNeeded()
+        
+        // Check subscription status
         subscriptionService.checkSubscriptionStatus()
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
-                    self?.setLoading(false)
+                    self?.isLoading = false
                     if case .failure(let error) = completion {
                         self?.handleError(error)
                     }
                 },
-                receiveValue: { [weak self] status in
-                    self?.subscriptionStatus = status
-                    self?.updateDailyLimits()
+                receiveValue: { status in
+                    if Config.isDebugMode {
+                        print("📱 Subscription status loaded: \(status.displayName)")
+                    }
                 }
             )
             .store(in: &cancellables)
     }
     
     func startVoiceAnalysis() {
-        guard canPerformAnalysis() else {
-            errorMessage = "Daily limit reached. Upgrade to Premium for unlimited analysis."
+        guard canPerformVoiceAnalysis else {
+            showUpgradePrompt = true
             return
         }
         
-        setLoading(true)
+        if Config.isDebugMode {
+            print("Starting voice analysis...")
+        }
         
-        emotionAnalysisService.startVoiceRecording()
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { [weak self] completion in
-                    self?.setLoading(false)
-                    if case .failure(let error) = completion {
-                        self?.handleError(error)
-                    }
-                },
-                receiveValue: { [weak self] emotionalData in
-                    self?.emotionalData.append(emotionalData)
-                    self?.decrementDailyUsage()
-                }
-            )
-            .store(in: &cancellables)
     }
     
     func showInsights() {
-        // Navigate to insights view
-        print("Showing emotional insights...")
-    }
-    
-    private func canPerformAnalysis() -> Bool {
-        switch subscriptionStatus {
-        case .free:
-            return dailyCheckInsRemaining > 0
-        case .premium, .pro:
-            return true
+        if Config.isDebugMode {
+            print("Showing emotional insights...")
         }
+        
+        // TODO: Navigate to insights view
+        // This will be implemented in the next phase
     }
     
-    private func updateDailyLimits() {
-        switch subscriptionStatus {
-        case .free:
-            dailyCheckInsRemaining = max(0, 3 - getTodayUsageCount())
-        case .premium, .pro:
-            dailyCheckInsRemaining = -1 // Unlimited
+    internal override func handleError(_ error: Error) {
+        super.handleError(error)
+        
+        if Config.isDebugMode {
+            print("❌ ContentViewModel Error: \(error)")
         }
-    }
-    
-    private func decrementDailyUsage() {
-        if subscriptionStatus == .free && dailyCheckInsRemaining > 0 {
-            dailyCheckInsRemaining -= 1
-        }
-    }
-    
-    private func getTodayUsageCount() -> Int {
-        let today = Calendar.current.startOfDay(for: Date())
-        return emotionalData.filter { data in
-            Calendar.current.isDate(data.timestamp, inSameDayAs: today)
-        }.count
     }
 }
 
