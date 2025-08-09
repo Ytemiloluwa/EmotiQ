@@ -13,6 +13,7 @@ class ContentViewModel: BaseViewModel {
     @Published var dailyUsageRemaining: Int = 3
     @Published var canPerformVoiceAnalysis: Bool = true
     @Published var showUpgradePrompt: Bool = false
+    @Published var showError = false
     
     private let subscriptionService: SubscriptionServiceProtocol
     private let persistenceController: PersistenceController
@@ -84,22 +85,26 @@ class ContentViewModel: BaseViewModel {
         }
         
         if Config.isDebugMode {
-            print("Starting voice analysis...")
+            print("🎤 Starting voice analysis...")
         }
         
+        // Voice recording will be handled by VoiceRecordingView
+        // This method is kept for compatibility but the actual navigation
+        // is handled in ContentView through the sheet presentation
     }
     
     func showInsights() {
         if Config.isDebugMode {
-            print("Showing emotional insights...")
+            print("📊 Showing emotional insights...")
         }
         
         // TODO: Navigate to insights view
         // This will be implemented in the next phase
     }
     
-    internal override func handleError(_ error: Error) {
-        super.handleError(error)
+    override func handleError(_ error: Error) {
+        errorMessage = error.localizedDescription
+        showError = true
         
         if Config.isDebugMode {
             print("❌ ContentViewModel Error: \(error)")

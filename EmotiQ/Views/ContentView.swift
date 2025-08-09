@@ -141,13 +141,8 @@ struct ContentView: View {
         .sheet(isPresented: $showVoiceRecording) {
             VoiceRecordingView()
         }
-        .alert("Upgrade Required", isPresented: $viewModel.showUpgradePrompt) {
-            Button("Upgrade Now") {
-                // TODO: Show subscription paywall
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("You've reached your daily limit of \(Config.Subscription.freeDailyLimit) voice check-ins. Upgrade to Premium for unlimited access.")
+        .sheet(isPresented: $viewModel.showUpgradePrompt) {
+            SubscriptionPaywallView()
         }
         .alert("Error", isPresented: $viewModel.showError) {
             Button("OK") { }

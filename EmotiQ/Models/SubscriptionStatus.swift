@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum SubscriptionStatus: String, CaseIterable, Codable {
+enum SubscriptionStatus: String, CaseIterable {
     case free = "free"
     case premium = "premium"
     case pro = "pro"
@@ -26,11 +26,22 @@ enum SubscriptionStatus: String, CaseIterable, Codable {
     var monthlyPrice: String {
         switch self {
         case .free:
-            return "$0"
+            return "Free"
         case .premium:
-            return "$9.99"
+            return Config.Subscription.premiumPrice
         case .pro:
-            return "$19.99"
+            return Config.Subscription.proPrice
+        }
+    }
+    
+    var productIdentifier: String {
+        switch self {
+        case .free:
+            return ""
+        case .premium:
+            return Config.Subscription.premiumMonthlyProductID
+        case .pro:
+            return Config.Subscription.proMonthlyProductID
         }
     }
     
@@ -40,8 +51,7 @@ enum SubscriptionStatus: String, CaseIterable, Codable {
             return [
                 "3 daily voice check-ins",
                 "Basic emotion tracking",
-                "Simple insights",
-                "Limited coaching tips"
+                "Simple insights"
             ]
         case .premium:
             return [
@@ -49,67 +59,47 @@ enum SubscriptionStatus: String, CaseIterable, Codable {
                 "Advanced emotion analysis",
                 "Personalized coaching",
                 "ElevenLabs voice affirmations",
-                "Weekly insights reports",
-                "Mood pattern tracking"
+                "Detailed emotional insights"
             ]
         case .pro:
             return [
                 "Everything in Premium",
-                "AI coaching conversations",
-                "Predictive emotional insights",
                 "Custom voice cloning",
-                "Advanced analytics",
-                "Priority support",
-                "Export data capabilities"
+                "Advanced analytics & trends",
+                "Data export capabilities",
+                "Priority customer support",
+                "Early access to new features"
             ]
         }
     }
     
-    var dailyCheckInLimit: Int? {
+    var dailyLimit: Int {
         switch self {
         case .free:
-            return 3
+            return Config.Subscription.freeDailyLimit
         case .premium, .pro:
-            return nil // Unlimited
+            return -1 // Unlimited
         }
     }
     
-    var hasAdvancedAnalysis: Bool {
-        switch self {
-        case .free:
-            return false
-        case .premium, .pro:
-            return true
-        }
+    var hasUnlimitedAccess: Bool {
+        return self != .free
     }
     
     var hasVoiceCloning: Bool {
-        switch self {
-        case .free, .premium:
-            return false
-        case .pro:
-            return true
-        }
+        return self == .pro
     }
     
-    var hasAICoaching: Bool {
-        switch self {
-        case .free:
-            return false
-        case .premium, .pro:
-            return true
-        }
+    var hasAdvancedAnalytics: Bool {
+        return self != .free
     }
     
-    var productIdentifier: String {
-        switch self {
-        case .free:
-            return ""
-        case .premium:
-            return "emotiq_premium_monthly"
-        case .pro:
-            return "emotiq_pro_monthly"
-        }
+    var hasDataExport: Bool {
+        return self == .pro
+    }
+    
+    var hasPrioritySupport: Bool {
+        return self == .pro
     }
 }
 

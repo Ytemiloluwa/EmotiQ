@@ -11,6 +11,7 @@
 		A7270B182E42A5EE00676A5A /* OneSignalExtension in Frameworks */ = {isa = PBXBuildFile; productRef = A7270B172E42A5EE00676A5A /* OneSignalExtension */; };
 		A7270B1A2E42A5EE00676A5A /* OneSignalFramework in Frameworks */ = {isa = PBXBuildFile; productRef = A7270B192E42A5EE00676A5A /* OneSignalFramework */; };
 		A7270B1C2E42A5EE00676A5A /* OneSignalInAppMessages in Frameworks */ = {isa = PBXBuildFile; productRef = A7270B1B2E42A5EE00676A5A /* OneSignalInAppMessages */; };
+		A795F33D2E452D0C00D1E301 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A795F33C2E452D0B00D1E301 /* StoreKit.framework */; };
 		A7C5C9912E3ECAF600EE8D2B /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = A7C5C9902E3ECAF600EE8D2B /* RevenueCat */; };
 		A7C5C9932E3ECAF600EE8D2B /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = A7C5C9922E3ECAF600EE8D2B /* RevenueCatUI */; };
 /* End PBXBuildFile section */
@@ -58,6 +59,7 @@
 		A753259E2E3BBE0E00735737 /* EmotiQ.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EmotiQ.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A75325B52E3BBE1000735737 /* EmotiQTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EmotiQTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A75325BF2E3BBE1000735737 /* EmotiQUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EmotiQUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A795F33C2E452D0B00D1E301 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -121,6 +123,7 @@
 			files = (
 				A7C5C9932E3ECAF600EE8D2B /* RevenueCatUI in Frameworks */,
 				A7270B1A2E42A5EE00676A5A /* OneSignalFramework in Frameworks */,
+				A795F33D2E452D0C00D1E301 /* StoreKit.framework in Frameworks */,
 				A7270B1C2E42A5EE00676A5A /* OneSignalInAppMessages in Frameworks */,
 				A7C5C9912E3ECAF600EE8D2B /* RevenueCat in Frameworks */,
 			);
@@ -150,6 +153,7 @@
 				A75325B82E3BBE1000735737 /* EmotiQTests */,
 				A75325C22E3BBE1000735737 /* EmotiQUITests */,
 				A7270B092E429FC700676A5A /* OneSignalNotificationServiceExtension */,
+				A795F33B2E452D0B00D1E301 /* Frameworks */,
 				A753259F2E3BBE0E00735737 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -163,6 +167,14 @@
 				A7270B082E429FC700676A5A /* OneSignalNotificationServiceExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A795F33B2E452D0B00D1E301 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A795F33C2E452D0B00D1E301 /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

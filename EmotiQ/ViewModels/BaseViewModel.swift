@@ -11,7 +11,6 @@ import Combine
 class BaseViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published var showError = false
     
     var cancellables = Set<AnyCancellable>()
     
@@ -23,13 +22,12 @@ class BaseViewModel: ObservableObject {
         DispatchQueue.main.async {
             self.isLoading = false
             self.errorMessage = error.localizedDescription
-            self.showError = true
         }
     }
     
     func clearError() {
         errorMessage = nil
-        showError = false
+
     }
     
     func setLoading(_ loading: Bool) {

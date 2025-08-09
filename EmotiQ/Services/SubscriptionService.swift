@@ -55,7 +55,7 @@ class SubscriptionService: SubscriptionServiceProtocol {
             subscriptionStatus = status
             
             if Config.isDebugMode {
-                print("Loaded subscription status from Core Data: \(status.displayName)")
+                print("📱 Loaded subscription status from Core Data: \(status.displayName)")
             }
         }
         
@@ -65,7 +65,7 @@ class SubscriptionService: SubscriptionServiceProtocol {
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
                         if Config.isDebugMode {
-                            print(" Failed to load subscription status: \(error)")
+                            print("❌ Failed to load subscription status: \(error)")
                         }
                     }
                 },
@@ -82,7 +82,7 @@ class SubscriptionService: SubscriptionServiceProtocol {
             dailyUsage = Int(user.dailyCheckInsUsed)
             
             if Config.isDebugMode {
-                print("Loaded daily usage: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+                print("📊 Loaded daily usage: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
             }
         }
     }
@@ -130,11 +130,11 @@ class SubscriptionService: SubscriptionServiceProtocol {
                     self?.updateUserSubscriptionStatus(tier)
                     
                     if Config.isDebugMode {
-                        print("Purchase successful: \(tier.displayName)")
+                        print("✅ Purchase successful: \(tier.displayName)")
                     }
                 } else {
                     if Config.isDebugMode {
-                        print("Purchase failed for: \(tier.displayName)")
+                        print("❌ Purchase failed for: \(tier.displayName)")
                     }
                 }
             })
@@ -143,7 +143,7 @@ class SubscriptionService: SubscriptionServiceProtocol {
     
     func restorePurchases() -> AnyPublisher<SubscriptionStatus, Error> {
         if Config.isDebugMode {
-            print(" Restoring purchases...")
+            print("🔄 Restoring purchases...")
         }
         
         return revenueCatService.restorePurchases()
@@ -161,7 +161,7 @@ class SubscriptionService: SubscriptionServiceProtocol {
                 self?.updateUserSubscriptionStatus(status)
                 
                 if Config.isDebugMode {
-                    print(" Restored subscription: \(status.displayName)")
+                    print("🔄 Restored subscription: \(status.displayName)")
                 }
             })
             .eraseToAnyPublisher()
@@ -191,7 +191,7 @@ class SubscriptionService: SubscriptionServiceProtocol {
         dailyUsage = Int(user.dailyCheckInsUsed)
         
         if Config.isDebugMode {
-            print("Daily usage incremented: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+            print("📈 Daily usage incremented: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
         }
     }
     
