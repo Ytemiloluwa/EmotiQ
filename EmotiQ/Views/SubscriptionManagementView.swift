@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import RevenueCat
 
 struct SubscriptionManagementView: View {
     @StateObject private var viewModel = SubscriptionManagementViewModel()

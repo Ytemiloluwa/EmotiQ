@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import RevenueCat
 
 protocol SubscriptionServiceProtocol {
     var currentSubscription: AnyPublisher<SubscriptionStatus, Never> { get }
@@ -25,6 +26,11 @@ class SubscriptionService: SubscriptionServiceProtocol {
     private let revenueCatService: RevenueCatServiceProtocol
     private let persistenceController: PersistenceController
     private var cancellables = Set<AnyCancellable>()
+    
+    // SANBOX testing //
+    
+//    @Published var currentOffering: Offering?
+//    @Published var availablePackages: [Package] = []
     
     var currentSubscription: AnyPublisher<SubscriptionStatus, Never> {
         $subscriptionStatus.eraseToAnyPublisher()
@@ -47,7 +53,34 @@ class SubscriptionService: SubscriptionServiceProtocol {
         loadInitialSubscriptionStatus()
         loadDailyUsage()
     }
-    
+    // SANBOX testing //
+//    func loadOfferings() {
+//        revenueCatService.getOfferings()
+//            .receive(on: DispatchQueue.main)
+//            .sink(
+//                receiveCompletion: { completion in
+//                    if case .failure(let error) = completion {
+//                        if Config.isDebugMode {
+//                            print("❌ Failed to load offerings: \(error)")
+//                        }
+//                    }
+//                },
+//                receiveValue: { [weak self] offerings in
+//                    self?.currentOffering = offerings.current
+//                    
+//                    if let offering = offerings.current {
+//                        self?.availablePackages = offering.availablePackages
+//                        
+//                        if Config.isDebugMode {
+//                            print("✅ Loaded \(offering.availablePackages.count) packages")
+//                        }
+//                    }
+//                }
+//            )
+//            .store(in: &cancellables)
+//    }
+    // SANBOX testing //
+
     private func loadInitialSubscriptionStatus() {
         // Load from Core Data first
         if let user = persistenceController.getCurrentUser() {

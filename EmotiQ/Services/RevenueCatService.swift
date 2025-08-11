@@ -156,6 +156,49 @@ class RevenueCatService: RevenueCatServiceProtocol {
         .eraseToAnyPublisher()
     }
     
+    // Add these methods to RevenueCatService class
+
+    ///////////////////// SANDBOX TESTING CODE ///////////////////////////////
+
+    ///////////////////// SANDBOX TESTING CODE ///////////////////////////////
+//    func purchasePackage(_ package: Package) -> AnyPublisher<CustomerInfo, Error> {
+//        return Future { promise in
+//            guard self.isConfigured else {
+//                // Mock successful purchase for development
+//                if Config.isDebugMode {
+//                    print("🧪 Mock purchase successful for: \(package.identifier)")
+//                }
+//                // Return a mock customer info for development
+//                let mockCustomerInfo = CustomerInfo(
+//                    activeSubscriptions: [package.identifier],
+//                    originalPurchaseDate: Date(),
+//                    latestExpirationDate: Date().addingTimeInterval(86400 * 30)
+//                )
+//                promise(.success(mockCustomerInfo))
+//                return
+//            }
+//            
+//            Purchases.shared.purchase(package: package) { transaction, customerInfo, error, userCancelled in
+//                if let error = error {
+//                    promise(.failure(error))
+//                } else if userCancelled {
+//                    promise(.failure(RevenueCatError.purchaseCancelled))
+//                } else if let customerInfo = customerInfo {
+//                    let customInfo = CustomerInfo(
+//                        activeSubscriptions: Array(customerInfo.activeSubscriptions),
+//                        originalPurchaseDate: customerInfo.originalPurchaseDate,
+//                        latestExpirationDate: customerInfo.latestExpirationDate
+//                    )
+//                    promise(.success(customInfo))
+//                } else {
+//                    promise(.failure(RevenueCatError.purchaseFailed))
+//                }
+//            }
+//        }
+//        .eraseToAnyPublisher()
+//    }
+    ///////////////////// SANDBOX TESTING CODE ///////////////////////////////
+    
     func checkTrialEligibility() -> AnyPublisher<Bool, Error> {
         return getCustomerInfo()
             .map { customerInfo in
@@ -269,6 +312,7 @@ enum RevenueCatError: Error, LocalizedError {
     case offeringsFailed
     case productNotFound
     case networkError
+    //case notConfigured
     
     var errorDescription: String? {
         switch self {
@@ -288,6 +332,8 @@ enum RevenueCatError: Error, LocalizedError {
             return "Subscription product not found."
         case .networkError:
             return "Network error. Please check your connection."
+        //case .notConfigured:
+           // return "RevenueCat not configured."
         }
     }
 }

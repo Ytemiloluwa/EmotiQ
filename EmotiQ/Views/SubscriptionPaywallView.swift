@@ -321,6 +321,14 @@ class SubscriptionPaywallViewModel: ObservableObject {
     @Published var purchaseCompleted = false
     @Published var offerings: RevenueCat.Offerings?
     
+    // Testing
+    
+    @Published var currentOffering: Offering?
+    @Published var premiumPackage: Package?
+    @Published var proPackage: Package?
+    
+    // SANBOX testing //
+    
     private let revenueCatService: RevenueCatServiceProtocol
     private let subscriptionService: SubscriptionServiceProtocol
     private var cancellables = Set<AnyCancellable>()
@@ -330,6 +338,38 @@ class SubscriptionPaywallViewModel: ObservableObject {
         self.revenueCatService = revenueCatService
         self.subscriptionService = subscriptionService
     }
+    // SANBOX testing //
+    
+//    func loadOfferings() {
+//        isLoading = true
+//        
+//        Purchases.shared.getOfferings { [weak self] offerings, error in
+//            DispatchQueue.main.async {
+//                self?.isLoading = false
+//                
+//                if let error = error {
+//                    self?.showError(message: "Failed to load subscription options: \(error.localizedDescription)")
+//                    return
+//                }
+//                
+//                guard let offering = offerings?.current else {
+//                    self?.showError(message: "No subscription options available")
+//                    return
+//                }
+//                
+//                self?.currentOffering = offering
+//                self?.premiumPackage = offering.package(identifier: "premium_monthly")
+//                self?.proPackage = offering.package(identifier: "pro_monthly")
+//                
+//                if Config.isDebugMode {
+//                    print("✅ Offerings loaded successfully")
+//                    print("Premium package: \(self?.premiumPackage?.storeProduct.localizedTitle ?? "nil")")
+//                    print("Pro package: \(self?.proPackage?.storeProduct.localizedTitle ?? "nil")")
+//                }
+//            }
+//        }
+//    }
+    // SANBOX testing //
     
     func loadOfferings() {
         isLoading = true
