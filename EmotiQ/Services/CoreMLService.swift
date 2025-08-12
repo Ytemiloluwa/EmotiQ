@@ -115,3 +115,25 @@ enum CoreMLError: Error, LocalizedError {
     }
 }
 
+// MARK: - Audio Features Model
+struct AudioFeatures {
+    let pitch: Double
+    let energy: Double
+    let tempo: Double
+    let spectralCentroid: Double
+    let mfccCoefficients: [Double]
+    
+    // For CoreML compatibility
+    var mfcc: [Float] {
+        return mfccCoefficients.map { Float($0) }
+    }
+    
+    var spectralRolloff: Float { Float(spectralCentroid * 0.85) }
+    var zeroCrossingRate: Float { Float(energy * 0.5) }
+    var rms: Float { Float(energy) }
+    var harmonicity: Float { Float(tempo) }
+    
+    var featureVector: [Float] {
+        return mfcc + [Float(spectralCentroid), spectralRolloff, zeroCrossingRate, rms, Float(pitch), harmonicity]
+    }
+}

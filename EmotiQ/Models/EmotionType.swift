@@ -56,7 +56,7 @@ enum EmotionType: String, CaseIterable, Codable {
         }
     }
     
-    var color: String {
+    var hexcolor: String {
         switch self {
         case .joy:
             return "#FFD700"  // Gold

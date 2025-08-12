@@ -11,52 +11,74 @@ import AVFoundation
 
 protocol EmotionAnalysisServiceProtocol {
     func startVoiceRecording() -> AnyPublisher<EmotionalData, Error>
-    func analyzeEmotion(from audioData: Data) -> AnyPublisher<EmotionalData, Error>
+    func analyzeEmotion(from audioURL: URL) -> AnyPublisher<EmotionalData, Error>
 }
 
 class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
     private let audioProcessingService = AudioProcessingService()
-    private let coreMLService = CoreMLService()
+    private let emotionService = CoreMLEmotionService.shared
     
     func startVoiceRecording() -> AnyPublisher<EmotionalData, Error> {
-        return audioProcessingService.recordAudio(duration: 5.0)
-            .flatMap { [weak self] audioData -> AnyPublisher<EmotionalData, Error> in
-                guard let self = self else {
-                    return Fail(error: EmotionAnalysisError.serviceUnavailable)
-                        .eraseToAnyPublisher()
+        return Future { [weak self] promise in
+            Task {
+                do {
+                    let audioURL = try await self?.audioProcessingService.startRecording() ?? URL(fileURLWithPath: "")
+                    let result = try await self?.emotionService.analyzeEmotion(from: audioURL) ?? EmotionAnalysisResult(
+                        timestamp: Date(),
+                        primaryEmotion: .neutral,
+                        confidence: 0.0,
+                        emotionScores: [:],
+                        audioQuality: .poor,
+                        sessionDuration: 0.0
+                    )
+                    
+                    let emotionalData = EmotionalData(
+                        timestamp: result.timestamp,
+                        primaryEmotion: self?.convertEmotionCategoryToType(result.primaryEmotion) ?? .neutral,
+                        confidence: result.confidence,
+                        intensity: result.confidence,
+                        voiceFeatures: nil,
+                        context: self?.createEmotionalContext()
+                    )
+                    
+                    promise(.success(emotionalData))
+                } catch {
+                    promise(.failure(error))
                 }
-                return self.analyzeEmotion(from: audioData)
             }
-            .eraseToAnyPublisher()
+        }
+        .eraseToAnyPublisher()
     }
     
-    func analyzeEmotion(from audioData: Data) -> AnyPublisher<EmotionalData, Error> {
-        return audioProcessingService.extractFeatures(from: audioData)
-            .flatMap { [weak self] features -> AnyPublisher<EmotionalData, Error> in
-                guard let self = self else {
-                    return Fail(error: EmotionAnalysisError.serviceUnavailable)
-                        .eraseToAnyPublisher()
+    func analyzeEmotion(from audioURL: URL) -> AnyPublisher<EmotionalData, Error> {
+        return Future { [weak self] promise in
+            Task {
+                do {
+                    let result = try await self?.emotionService.analyzeEmotion(from: audioURL) ?? EmotionAnalysisResult(
+                        timestamp: Date(),
+                        primaryEmotion: .neutral,
+                        confidence: 0.0,
+                        emotionScores: [:],
+                        audioQuality: .poor,
+                        sessionDuration: 0.0
+                    )
+                    
+                    let emotionalData = EmotionalData(
+                        timestamp: result.timestamp,
+                        primaryEmotion: self?.convertEmotionCategoryToType(result.primaryEmotion) ?? .neutral,
+                        confidence: result.confidence,
+                        intensity: result.confidence,
+                        voiceFeatures: nil,
+                        context: self?.createEmotionalContext()
+                    )
+                    
+                    promise(.success(emotionalData))
+                } catch {
+                    promise(.failure(error))
                 }
-                
-                return self.coreMLService.predictEmotion(from: features)
-                    .map { prediction in
-                        EmotionalData(
-                            primaryEmotion: prediction.emotion,
-                            confidence: prediction.confidence,
-                            intensity: prediction.intensity,
-                            voiceFeatures: VoiceFeatures(
-                                pitch: features.pitch,
-                                energy: features.energy,
-                                tempo: features.tempo,
-                                spectralCentroid: features.spectralCentroid,
-                                mfccCoefficients: features.mfccCoefficients
-                            ),
-                            context: self.createEmotionalContext()
-                        )
-                    }
-                    .eraseToAnyPublisher()
             }
-            .eraseToAnyPublisher()
+        }
+        .eraseToAnyPublisher()
     }
     
     private func createEmotionalContext() -> EmotionalContext {
@@ -74,24 +96,16 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
             dayOfWeek: dayOfWeek
         )
     }
-}
-
-enum EmotionAnalysisError: Error, LocalizedError {
-    case recordingFailed
-    case analysisTimeout
-    case serviceUnavailable
-    case invalidAudioData
     
-    var errorDescription: String? {
-        switch self {
-        case .recordingFailed:
-            return "Failed to record audio. Please check microphone permissions."
-        case .analysisTimeout:
-            return "Emotion analysis timed out. Please try again."
-        case .serviceUnavailable:
-            return "Emotion analysis service is currently unavailable."
-        case .invalidAudioData:
-            return "Invalid audio data received."
+    private func convertEmotionCategoryToType(_ category: EmotionCategory) -> EmotionType {
+        switch category {
+        case .joy: return .joy
+        case .sadness: return .sadness
+        case .anger: return .anger
+        case .fear: return .fear
+        case .surprise: return .surprise
+        case .disgust: return .disgust
+        case .neutral: return .neutral
         }
     }
 }
