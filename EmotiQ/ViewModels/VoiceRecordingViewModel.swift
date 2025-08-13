@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Combine
 import SwiftUI
+import Combine
 
 class VoiceRecordingViewModel: ObservableObject {
     @Published var isRecording = false
@@ -131,7 +131,15 @@ class VoiceRecordingViewModel: ObservableObject {
     
     func processRecording() {
         guard let url = currentRecordingURL else {
-            showError(message: "No recording found")
+            showError(message: "No recording found. Please record your voice first.")
+            return
+        }
+        
+        // Check if it is already processing
+        guard !isLoading else {
+            if Config.isDebugMode {
+                print("⚠️ Analysis already in progress, ignoring duplicate request")
+            }
             return
         }
         
@@ -144,14 +152,18 @@ class VoiceRecordingViewModel: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isLoading = false
                     if case .failure(let error) = completion {
-                        self?.showError(message: error.localizedDescription)
+                        self?.showError(message: "Audio validation failed: \(error.localizedDescription)")
                     }
                 },
                 receiveValue: { [weak self] quality in
                     if quality.isAcceptable {
+                        if Config.isDebugMode {
+                            print("✅ Audio quality validated: \(quality.displayName)")
+                        }
                         self?.proceedWithAnalysis(url: url, quality: quality)
                     } else {
-                        self?.showError(message: "Audio quality is too low. Please try recording again in a quieter environment.")
+                        self?.isLoading = false
+                        self?.showError(message: "Audio quality is too low (\(quality.displayName)). Please try recording again in a quieter environment with clear speech.")
                     }
                 }
             )
@@ -162,13 +174,57 @@ class VoiceRecordingViewModel: ObservableObject {
         // Increment daily usage for free users
         subscriptionService.incrementDailyUsage()
         
-        // TODO: Proceed to emotion analysis
-        if Config.isDebugMode {
-            print(" Proceeding with emotion analysis for recording with \(quality.displayName) quality")
-        }
+        isLoading = true
         
-        // For now, just show success
-        // In the next phase, this will integrate with EmotionAnalysisService
+        // Use the production-ready CoreMLEmotionService for emotion analysis
+        Task {
+            do {
+                // Analyze emotion using the comprehensive CoreMLEmotionService
+                let result = try await CoreMLEmotionService.shared.analyzeEmotion(from: url)
+                
+                await MainActor.run {
+                    self.isLoading = false
+                    
+                    // Store the result in the shared service for persistence
+                    CoreMLEmotionService.shared.lastAnalysisResult = result
+                    
+                    // Post notification with the analysis result
+                    NotificationCenter.default.post(
+                        name: .recordingCompleted,
+                        object: result,
+                        userInfo: ["audioQuality": quality]
+                    )
+                    
+                    // Log successful analysis for debugging
+                    if Config.isDebugMode {
+                        print("🎤 Emotion analysis completed successfully")
+                        print("📊 Primary emotion: \(result.primaryEmotion.displayName)")
+                        print("🎯 Confidence: \(String(format: "%.1f%%", result.confidence * 100))")
+                        print("⏱️ Session duration: \(String(format: "%.1f", result.sessionDuration))s")
+                    }
+                }
+                
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    
+                    // Handle specific error types
+                    let errorMessage: String
+                    if let emotionError = error as? EmotionAnalysisError {
+                        errorMessage = emotionError.localizedDescription
+                    } else {
+                        errorMessage = "Emotion analysis failed: \(error.localizedDescription)"
+                    }
+                    
+                    self.showError(message: errorMessage)
+                    
+                    // Log error for debugging
+                    if Config.isDebugMode {
+                        print("❌ Emotion analysis failed: \(error)")
+                    }
+                }
+            }
+        }
     }
     
     func openSettings() {
@@ -182,7 +238,7 @@ class VoiceRecordingViewModel: ObservableObject {
         showError = true
         
         if Config.isDebugMode {
-            print("Voice Recording Error: \(message)")
+            print("❌ Voice Recording Error: \(message)")
         }
     }
 }

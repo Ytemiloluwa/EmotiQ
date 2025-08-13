@@ -20,17 +20,14 @@ protocol SubscriptionServiceProtocol {
     func getRemainingDailyUsage() -> Int
 }
 
-class SubscriptionService: SubscriptionServiceProtocol {
+class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
+    static let shared = SubscriptionService()
+    
     @Published private var subscriptionStatus: SubscriptionStatus = .free
-    @Published private var dailyUsage: Int = 0
+    @Published var dailyUsage: Int = 0
     private let revenueCatService: RevenueCatServiceProtocol
     private let persistenceController: PersistenceController
     private var cancellables = Set<AnyCancellable>()
-    
-    // SANBOX testing //
-    
-//    @Published var currentOffering: Offering?
-//    @Published var availablePackages: [Package] = []
     
     var currentSubscription: AnyPublisher<SubscriptionStatus, Never> {
         $subscriptionStatus.eraseToAnyPublisher()
@@ -44,6 +41,20 @@ class SubscriptionService: SubscriptionServiceProtocol {
             .eraseToAnyPublisher()
     }
     
+    var hasActiveSubscription: Bool {
+        subscriptionStatus != .free
+    }
+    
+    var currentSubscriptionTier: SubscriptionStatus? {
+        hasActiveSubscription ? subscriptionStatus : nil
+    }
+    
+    var subscriptionExpiryDate: Date? {
+        // This would typically come from RevenueCat
+        // For now, return a placeholder date if subscribed
+        hasActiveSubscription ? Calendar.current.date(byAdding: .month, value: 1, to: Date()) : nil
+    }
+    
     init(revenueCatService: RevenueCatServiceProtocol = RevenueCatService(),
          persistenceController: PersistenceController = .shared) {
         self.revenueCatService = revenueCatService
@@ -53,33 +64,6 @@ class SubscriptionService: SubscriptionServiceProtocol {
         loadInitialSubscriptionStatus()
         loadDailyUsage()
     }
-    // SANBOX testing //
-//    func loadOfferings() {
-//        revenueCatService.getOfferings()
-//            .receive(on: DispatchQueue.main)
-//            .sink(
-//                receiveCompletion: { completion in
-//                    if case .failure(let error) = completion {
-//                        if Config.isDebugMode {
-//                            print("❌ Failed to load offerings: \(error)")
-//                        }
-//                    }
-//                },
-//                receiveValue: { [weak self] offerings in
-//                    self?.currentOffering = offerings.current
-//                    
-//                    if let offering = offerings.current {
-//                        self?.availablePackages = offering.availablePackages
-//                        
-//                        if Config.isDebugMode {
-//                            print("✅ Loaded \(offering.availablePackages.count) packages")
-//                        }
-//                    }
-//                }
-//            )
-//            .store(in: &cancellables)
-//    }
-    // SANBOX testing //
 
     private func loadInitialSubscriptionStatus() {
         // Load from Core Data first
@@ -298,3 +282,37 @@ struct CustomerInfo {
     }
 }
 
+
+
+// SANBOX testing //
+//    func loadOfferings() {
+//        revenueCatService.getOfferings()
+//            .receive(on: DispatchQueue.main)
+//            .sink(
+//                receiveCompletion: { completion in
+//                    if case .failure(let error) = completion {
+//                        if Config.isDebugMode {
+//                            print("❌ Failed to load offerings: \(error)")
+//                        }
+//                    }
+//                },
+//                receiveValue: { [weak self] offerings in
+//                    self?.currentOffering = offerings.current
+//
+//                    if let offering = offerings.current {
+//                        self?.availablePackages = offering.availablePackages
+//
+//                        if Config.isDebugMode {
+//                            print("✅ Loaded \(offering.availablePackages.count) packages")
+//                        }
+//                    }
+//                }
+//            )
+//            .store(in: &cancellables)
+//    }
+// SANBOX testing //
+
+// SANBOX testing //
+
+//    @Published var currentOffering: Offering?
+//    @Published var availablePackages: [Package] = []

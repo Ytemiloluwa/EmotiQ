@@ -11,6 +11,7 @@ import Combine
 struct VoiceRecordingView: View {
     @StateObject private var viewModel = VoiceRecordingViewModel()
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var emotionService: CoreMLEmotionService
     
     var body: some View {
         NavigationView {
@@ -34,7 +35,7 @@ struct VoiceRecordingView: View {
                             .fontWeight(.bold)
                             .foregroundColor(.white)
                         
-                        Text("Speak naturally for 5-30 seconds")
+                        Text("Speak naturally for 2-120 seconds")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -110,15 +111,21 @@ struct VoiceRecordingView: View {
                             }
                             .disabled(viewModel.isLoading)
                             
-                            // Done Button (only show when recording is complete)
+                            // Analyze Button (only show when recording is complete)
                             if viewModel.hasRecording {
                                 Button(action: {
                                     viewModel.processRecording()
                                 }) {
                                     VStack(spacing: 4) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.title2)
-                                        Text("Analyze")
+                                        if viewModel.isLoading {
+                                            ProgressView()
+                                                .scaleEffect(0.8)
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        } else {
+                                            Image(systemName: "brain.head.profile")
+                                                .font(.title2)
+                                        }
+                                        Text(viewModel.isLoading ? "Analyzing..." : "Analyze")
                                             .font(.caption)
                                     }
                                     .foregroundColor(.white)
@@ -131,6 +138,37 @@ struct VoiceRecordingView: View {
                 }
             }
             .navigationBarHidden(true)
+            .overlay(
+                // Analysis Loading Overlay
+                Group {
+                    if viewModel.isLoading {
+                        ZStack {
+                            Color.black.opacity(0.7)
+                                .ignoresSafeArea()
+                            
+                            VStack(spacing: 20) {
+                                ProgressView()
+                                    .scaleEffect(1.5)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                
+                                VStack(spacing: 8) {
+                                    Text("Analyzing Your Voice")
+                                        .font(.title2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Processing audio features and detecting emotions...")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white.opacity(0.8))
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal, 40)
+                                }
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+            )
         }
         .alert("Recording Error", isPresented: $viewModel.showError) {
             Button("OK") { }
@@ -147,6 +185,9 @@ struct VoiceRecordingView: View {
         }
         .onAppear {
             viewModel.requestPermissionIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recordingCompleted)) { _ in
+            dismiss()
         }
     }
     
@@ -192,8 +233,54 @@ struct QualityIndicatorView: View {
     }
 }
 
+struct AudioVisualizationView: View {
+    let audioLevel: Float
+    let isRecording: Bool
+    
+    private let barCount = 20
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<barCount, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(barColor(for: index))
+                    .frame(width: 4)
+                    .frame(height: barHeight(for: index))
+                    .animation(.easeInOut(duration: 0.1), value: audioLevel)
+            }
+        }
+    }
+    
+    private func barHeight(for index: Int) -> CGFloat {
+        let baseHeight: CGFloat = 8
+        let maxHeight: CGFloat = 80
+        
+        if !isRecording {
+            return baseHeight
+        }
+        
+        // Create a wave pattern based on audio level
+        let normalizedIndex = Float(index) / Float(barCount - 1)
+        let waveOffset = sin(normalizedIndex * .pi * 2) * 0.3
+        let adjustedLevel = max(0, audioLevel + waveOffset)
+        
+        return baseHeight + (maxHeight - baseHeight) * CGFloat(adjustedLevel)
+    }
+    
+    private func barColor(for index: Int) -> Color {
+        let normalizedIndex = Float(index) / Float(barCount - 1)
+        let threshold = audioLevel * 0.8
+        
+        if normalizedIndex <= threshold {
+            return .white
+        } else {
+            return .white.opacity(0.3)
+        }
+    }
+}
+
+
 #Preview {
     VoiceRecordingView()
 }
-
 

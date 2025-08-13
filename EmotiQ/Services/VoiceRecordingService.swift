@@ -91,7 +91,7 @@ enum VoiceRecordingError: Error, LocalizedError {
     }
 }
 
-class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol {
+class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, ObservableObject {
     
     // MARK: - Published Properties
     @Published private var _isRecording: Bool = false
@@ -153,7 +153,7 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol {
             }
         } catch {
             if Config.isDebugMode {
-                print("Failed to setup audio session: \(error)")
+                print("❌ Failed to setup audio session: \(error)")
             }
         }
     }
@@ -165,7 +165,7 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol {
             self?.audioSession.requestRecordPermission { granted in
                 DispatchQueue.main.async {
                     if Config.isDebugMode {
-                        print("🎤 Microphone permission: \(granted ? " Granted" : " Denied")")
+                        print("🎤 Microphone permission: \(granted ? "✅ Granted" : "❌ Denied")")
                     }
                     promise(.success(granted))
                 }
@@ -455,7 +455,7 @@ extension VoiceRecordingService: AVAudioRecorderDelegate {
     
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         if Config.isDebugMode {
-            print(" Recording finished successfully: \(flag)")
+            print("🎤 Recording finished successfully: \(flag)")
         }
         
         if !flag {
@@ -467,7 +467,7 @@ extension VoiceRecordingService: AVAudioRecorderDelegate {
     
     func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         if let error = error, Config.isDebugMode {
-            print(" Recording encode error: \(error)")
+            print("❌ Recording encode error: \(error)")
         }
         
         _isRecording = false
@@ -475,4 +475,3 @@ extension VoiceRecordingService: AVAudioRecorderDelegate {
         cleanup()
     }
 }
-
