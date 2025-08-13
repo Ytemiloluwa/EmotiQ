@@ -111,11 +111,11 @@ struct AuthenticationView: View {
                     .clipShape(Capsule())
                 }
                 
-                Button("Skip Authentication") {
-                    isAuthenticated = true
-                }
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.8))
+//                Button("Skip Authentication") {
+//                    isAuthenticated = true
+//                }
+//                .font(.subheadline)
+//                .foregroundColor(.white.opacity(0.8))
             }
         }
         .alert("Authentication Error", isPresented: $showingError) {
