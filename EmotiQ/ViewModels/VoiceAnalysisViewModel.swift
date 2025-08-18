@@ -25,7 +25,7 @@ class VoiceAnalysisViewModel: ObservableObject {
     @Published var errorMessage = ""
     @Published var dailyUsageCount = 0
     @Published var canRecord = true
-    @Published var showingResultSheet = false
+    @Published var showingAnalysisResult = false
     
     // MARK: - Constants
     let dailyUsageLimit = 3 // Free tier limit
@@ -35,6 +35,7 @@ class VoiceAnalysisViewModel: ObservableObject {
     private let audioProcessingService = AudioProcessingService()
     private let emotionService = CoreMLEmotionService.shared
     private let subscriptionService = SubscriptionService.shared
+    private let persistenceController = PersistenceController.shared
     
     // MARK: - Private Properties
     private var recordingTimer: Timer?
@@ -104,9 +105,15 @@ class VoiceAnalysisViewModel: ObservableObject {
             // Update daily usage IMMEDIATELY
             await updateDailyUsage()
             
-            // Update UI with results
-            analysisResult = result
-            showingResultSheet = true
+                    // Save emotional data to Core Data
+        await saveEmotionalData(result)
+        
+        // Notify other components that new emotional data was saved
+        NotificationCenter.default.post(name: .emotionalDataSaved, object: result)
+        
+        // Update UI with results
+        analysisResult = result
+        showingAnalysisResult = true
             
             print("🎉 Voice analysis completed successfully")
             
@@ -190,6 +197,50 @@ class VoiceAnalysisViewModel: ObservableObject {
         updateCanRecord()
         
         print("📈 Daily usage incremented to: \(dailyUsageCount)")
+    }
+    
+    private func saveEmotionalData(_ result: EmotionAnalysisResult) async {
+        // Get or create user
+        let user = persistenceController.createUserIfNeeded()
+        
+        // Convert EmotionCategory to EmotionType
+        let emotionType = EmotionType(rawValue: result.primaryEmotion.rawValue) ?? .neutral
+        
+        // Convert EmotionIntensity to Double
+        let intensityValue = result.intensity.threshold
+        
+        // Enhanced conversion: Convert ProductionAudioFeatures to VoiceFeatures with complete data preservation
+        let voiceFeatures: VoiceFeatures?
+        if let audioFeatures = result.audioFeatures {
+            // Use the enhanced conversion method for complete data preservation
+            voiceFeatures = VoiceFeatures.fromProductionFeatures(audioFeatures)
+            
+            // Log the enhanced features for debugging
+            print("🎯 Enhanced VoiceFeatures created:")
+            print("   - Core features: pitch=\(voiceFeatures!.pitch), energy=\(voiceFeatures!.energy)")
+            print("   - Enhanced features: \(voiceFeatures!.featureSummary)")
+            print("   - Total features: \(voiceFeatures!.featureCount)")
+        } else {
+            voiceFeatures = nil
+            print("⚠️ No audio features available for conversion")
+        }
+        
+        // Convert EmotionAnalysisResult to EmotionalData
+        let emotionalData = EmotionalData(
+            timestamp: result.timestamp,
+            primaryEmotion: emotionType,
+            confidence: result.confidence,
+            intensity: intensityValue,
+            voiceFeatures: voiceFeatures
+        )
+        
+        // Save to Core Data
+        persistenceController.saveEmotionalData(emotionalData, for: user)
+        
+        print("💾 Enhanced emotional data saved to Core Data: \(result.primaryEmotion.displayName)")
+        if let features = voiceFeatures {
+            print("📊 Data preservation: \(features.hasEnhancedFeatures ? "Enhanced" : "Basic") features (\(features.featureCount) total)")
+        }
     }
     
     private func startRecordingTimer() {

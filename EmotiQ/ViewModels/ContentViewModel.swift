@@ -102,7 +102,7 @@ class ContentViewModel: BaseViewModel {
         // This will be implemented in the next phase
     }
     
-    override func handleError(_ error: Error) {
+    internal override func handleError(_ error: Error) {
         errorMessage = error.localizedDescription
         showError = true
         

@@ -13,31 +13,6 @@ struct PersistenceController {
     
     static var preview: PersistenceController = {
         let result = PersistenceController(inMemory: true)
-        let viewContext = result.container.viewContext
-        
-        // Add sample data for previews
-        let sampleUser = User(context: viewContext)
-        sampleUser.id = UUID()
-        sampleUser.createdAt = Date()
-        sampleUser.subscriptionStatus = SubscriptionStatus.free.rawValue
-        sampleUser.dailyCheckInsUsed = 1
-        sampleUser.lastCheckInDate = Date()
-        
-        // Add sample emotional data
-        let sampleEmotion = EmotionalDataEntity(context: viewContext)
-        sampleEmotion.id = UUID()
-        sampleEmotion.timestamp = Date()
-        sampleEmotion.primaryEmotion = "joy"
-        sampleEmotion.confidence = 0.85
-        sampleEmotion.intensity = 0.7
-        sampleEmotion.user = sampleUser
-        
-        do {
-            try viewContext.save()
-        } catch {
-            let nsError = error as NSError
-            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-        }
         return result
     }()
     
@@ -56,7 +31,7 @@ struct PersistenceController {
                     storeDescription.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
                     
                     // CloudKit configuration
-                    // CloudKit is automatically enabled with NSPersistentCloudKitContainer
+                    //storeDescription.setOption(true as NSNumber, forKey: NSPersistentCloudKitContainerOptionsKey)
                 }
             }
         }
@@ -65,11 +40,10 @@ struct PersistenceController {
             if let error = error as NSError? {
                 // Handle different types of Core Data errors
                 if Config.isDebugMode {
-                    print(" Core Data Error: \(error)")
-                    print(" Description: \(error.localizedDescription)")
-                    print(" User Info: \(error.userInfo)")
+                    print("❌ Core Data Error: \(error)")
+                    print("   Description: \(error.localizedDescription)")
+                    print("   User Info: \(error.userInfo)")
                 }
-                
                 if Config.isDebugMode {
                     fatalError("Unresolved Core Data error \(error), \(error.userInfo)")
                 } else {
@@ -78,9 +52,9 @@ struct PersistenceController {
                 }
             } else {
                 if Config.isDebugMode {
-                    print("Core Data loaded successfully")
+                    print("✅ Core Data loaded successfully")
                     if Config.CoreData.enableCloudKit {
-                        print("CloudKit sync enabled")
+                        print(" CloudKit sync enabled")
                     }
                 }
             }
@@ -105,7 +79,7 @@ struct PersistenceController {
                 queue: .main
             ) { _ in
                 if Config.isDebugMode {
-                    print(" Remote Core Data changes detected")
+                    print("🔄 Remote Core Data changes detected")
                 }
             }
         }
@@ -154,7 +128,7 @@ struct PersistenceController {
             return users.first
         } catch {
             if Config.isDebugMode {
-                print("Failed to fetch current user: \(error)")
+                print("❌ Failed to fetch current user: \(error)")
             }
             return nil
         }
@@ -213,7 +187,7 @@ struct PersistenceController {
         save()
         
         if Config.isDebugMode {
-            print(" Daily usage incremented: \(user.dailyCheckInsUsed)/\(Config.Subscription.freeDailyLimit)")
+            print("📊 Daily usage incremented: \(user.dailyCheckInsUsed)/\(Config.Subscription.freeDailyLimit)")
         }
     }
     
@@ -242,7 +216,7 @@ struct PersistenceController {
         save()
         
         if Config.isDebugMode {
-            print("Emotional data saved: \(emotionalData.primaryEmotion.displayName) (\(String(format: "%.1f", emotionalData.confidence * 100))% confidence)")
+            print("💭 Emotional data saved: \(emotionalData.primaryEmotion.displayName) (\(String(format: "%.1f", emotionalData.confidence * 100))% confidence)")
         }
     }
     
@@ -260,13 +234,286 @@ struct PersistenceController {
             save()
             
             if Config.isDebugMode {
-                print(" Deleted emotional data older than \(days) days")
+                print("🗑️ Deleted emotional data older than \(days) days")
             }
         } catch {
             if Config.isDebugMode {
-                print(" Failed to delete old data: \(error)")
+                print("❌ Failed to delete old data: \(error)")
             }
         }
+    }
+    
+    // MARK: - NEW COACHING METHODS (Added for Week 4 features)
+    
+    // MARK: - Goal Management
+    func saveGoal(_ goal: EmotionalGoal, for user: User) {
+        let entity = GoalEntity(context: container.viewContext)
+        entity.id = goal.id
+        entity.title = goal.title
+        entity.goalDescription = goal.description
+        entity.category = goal.category.rawValue
+        entity.targetDate = goal.targetDate
+        entity.createdAt = goal.createdAt
+        entity.progress = goal.progress
+        entity.isCompleted = goal.isCompleted
+        entity.completedAt = goal.completedAt
+        entity.user = user
+        
+        // Save milestones
+        for milestone in goal.milestones {
+            let milestoneEntity = MilestoneEntity(context: container.viewContext)
+            milestoneEntity.id = milestone.id
+            milestoneEntity.title = milestone.title
+            milestoneEntity.milestoneDescription = milestone.description
+            milestoneEntity.targetProgress = milestone.targetProgress
+            milestoneEntity.isCompleted = milestone.isCompleted
+            milestoneEntity.completedAt = milestone.completedAt
+            milestoneEntity.goal = entity
+        }
+        
+        save()
+        
+        if Config.isDebugMode {
+            print("🎯 Goal saved: \(goal.title)")
+        }
+    }
+    
+    func fetchGoals(for user: User) -> [GoalEntity] {
+        let request: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@", user)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \GoalEntity.createdAt, ascending: false)]
+        
+        do {
+            return try container.viewContext.fetch(request)
+        } catch {
+            if Config.isDebugMode {
+                print("❌ Failed to fetch goals: \(error)")
+            }
+            return []
+        }
+    }
+    
+    func updateGoalProgress(_ goalId: UUID, progress: Double) {
+        let request: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", goalId as CVarArg)
+        request.fetchLimit = 1
+        
+        do {
+            if let goal = try container.viewContext.fetch(request).first {
+                goal.progress = progress
+                if progress >= 1.0 {
+                    goal.isCompleted = true
+                    goal.completedAt = Date()
+                }
+                save()
+                
+                if Config.isDebugMode {
+                    print("📈 Goal progress updated: \(String(format: "%.1f", progress * 100))%")
+                }
+            }
+        } catch {
+            if Config.isDebugMode {
+                print("❌ Failed to update goal progress: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Intervention Management
+    func saveInterventionCompletion(_ completion: CompletedIntervention, for user: User) {
+        let entity = InterventionCompletionEntity(context: container.viewContext)
+        entity.id = completion.id
+        entity.interventionId = completion.interventionId
+        entity.title = completion.title
+        entity.category = completion.category.rawValue
+        entity.completedAt = completion.completedAt
+        entity.duration = Int32(completion.duration)
+        entity.effectiveness = Int16(completion.effectiveness ?? 0)
+        entity.notes = completion.notes
+        entity.user = user
+        
+        save()
+        
+        if Config.isDebugMode {
+            print("🧘 Intervention completed: \(completion.title)")
+        }
+    }
+    
+    func fetchInterventionCompletions(for user: User, limit: Int = 50) -> [InterventionCompletionEntity] {
+        let request: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@", user)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \InterventionCompletionEntity.completedAt, ascending: false)]
+        request.fetchLimit = limit
+        
+        do {
+            return try container.viewContext.fetch(request)
+        } catch {
+            if Config.isDebugMode {
+                print("❌ Failed to fetch intervention completions: \(error)")
+            }
+            return []
+        }
+    }
+    
+    // MARK: - Coaching Recommendation Management
+    func saveCoachingRecommendation(_ recommendation: CoachingRecommendation, for user: User) {
+        let entity = CoachingRecommendationEntity(context: container.viewContext)
+        entity.id = recommendation.id
+        entity.title = recommendation.title
+        entity.recommendationDescription = recommendation.description
+        entity.category = recommendation.category
+        entity.icon = recommendation.icon
+        entity.estimatedDuration = recommendation.estimatedDuration
+        entity.priority = recommendation.priority.rawValue
+        entity.createdAt = recommendation.createdAt
+        entity.isCompleted = false
+        entity.user = user
+        
+        save()
+        
+        if Config.isDebugMode {
+            print("💡 Coaching recommendation saved: \(recommendation.title)")
+        }
+    }
+    
+    func fetchCoachingRecommendations(for user: User) -> [CoachingRecommendationEntity] {
+        let request: NSFetchRequest<CoachingRecommendationEntity> = CoachingRecommendationEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@", user)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \CoachingRecommendationEntity.createdAt, ascending: false)]
+        
+        do {
+            return try container.viewContext.fetch(request)
+        } catch {
+            if Config.isDebugMode {
+                print("❌ Failed to fetch coaching recommendations: \(error)")
+            }
+            return []
+        }
+    }
+    
+    func markRecommendationCompleted(_ recommendationId: UUID) {
+        let request: NSFetchRequest<CoachingRecommendationEntity> = CoachingRecommendationEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", recommendationId as CVarArg)
+        request.fetchLimit = 1
+        
+        do {
+            if let recommendation = try container.viewContext.fetch(request).first {
+                recommendation.isCompleted = true
+                recommendation.completedAt = Date()
+                save()
+                
+                if Config.isDebugMode {
+                    print("✅ Recommendation marked completed: \(recommendation.title ?? "Unknown")")
+                }
+            }
+        } catch {
+            if Config.isDebugMode {
+                print("❌ Failed to mark recommendation completed: \(error)")
+            }
+        }
+    }
+    
+
+}
+
+// MARK: - Entity Conversion Extensions (Enhanced)
+extension EmotionalDataEntity {
+    func toEmotionalData() -> EmotionalData? {
+        guard let id = self.id,
+              let emotionTypeString = self.primaryEmotion,
+              let emotionType = EmotionType(rawValue: emotionTypeString),
+              let timestamp = self.timestamp else {
+            return nil
+        }
+        
+        // Decode voice features if available
+        var voiceFeatures: VoiceFeatures?
+        if let voiceFeaturesData = self.voiceFeaturesData {
+            do {
+                let decoder = JSONDecoder()
+                voiceFeatures = try decoder.decode(VoiceFeatures.self, from: voiceFeaturesData)
+            } catch {
+                if Config.isDebugMode {
+                    print("❌ Failed to decode voice features: \(error)")
+                }
+            }
+        }
+        
+        return EmotionalData(
+            timestamp: timestamp, primaryEmotion: emotionType,
+            confidence: self.confidence,
+            intensity: self.intensity,
+            voiceFeatures: voiceFeatures
+        )
+    }
+}
+
+extension GoalEntity {
+    func toEmotionalGoal() -> EmotionalGoal? {
+        guard let id = self.id,
+              let title = self.title,
+              let description = self.goalDescription,
+              let categoryString = self.category,
+              let category = GoalCategory(rawValue: categoryString),
+              let createdAt = self.createdAt else {
+            return nil
+        }
+        
+        let milestones = (self.milestones?.allObjects as? [MilestoneEntity])?.compactMap { $0.toGoalMilestone() } ?? []
+        
+        return EmotionalGoal(
+            id: id,
+            title: title,
+            description: description,
+            category: category,
+            targetDate: self.targetDate,
+            createdAt: createdAt,
+            progress: self.progress,
+            isCompleted: self.isCompleted,
+            completedAt: self.completedAt,
+            milestones: milestones
+        )
+    }
+}
+
+extension MilestoneEntity {
+    func toGoalMilestone() -> GoalMilestone? {
+        guard let id = self.id,
+              let title = self.title,
+              let description = self.milestoneDescription else {
+            return nil
+        }
+        
+        return GoalMilestone(
+            title: title,
+            description: description,
+            targetProgress: self.targetProgress,
+            isCompleted: self.isCompleted,
+            completedAt: self.completedAt
+        )
+    }
+}
+
+extension InterventionCompletionEntity {
+    func toCompletedIntervention() -> CompletedIntervention? {
+        guard let id = self.id,
+              let interventionId = self.interventionId,
+              let title = self.title,
+              let categoryString = self.category,
+              let category = InterventionCategory(rawValue: categoryString),
+              let completedAt = self.completedAt else {
+            return nil
+        }
+        
+        return CompletedIntervention(
+            id: id,
+            interventionId: interventionId,
+            title: title,
+            category: category,
+            completedAt: completedAt,
+            duration: Int(self.duration),
+            effectiveness: self.effectiveness > 0 ? Int(self.effectiveness) : nil,
+            notes: self.notes
+        )
     }
 }
 

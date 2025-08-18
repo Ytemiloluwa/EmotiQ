@@ -34,7 +34,8 @@ struct ContentView: View {
     }
     
     private func checkAuthenticationStatus() {
-        let faceIDEnabled = UserDefaults.standard.bool(forKey: "faceIDEnabled")
+        let securityManager = SecurityManager.shared
+        let faceIDEnabled = securityManager.isFaceIDEnabled()
         
         if faceIDEnabled {
             authenticateWithBiometrics()
@@ -45,9 +46,9 @@ struct ContentView: View {
     
     private func authenticateWithBiometrics() {
         Task {
-            let biometricService = BiometricAuthenticationService()
+            let securityManager = SecurityManager.shared
             do {
-                let success = try await biometricService.authenticateUser(
+                let success = try await securityManager.authenticateWithBiometrics(
                     reason: "Authenticate to access EmotiQ"
                 )
                 await MainActor.run {
@@ -55,8 +56,8 @@ struct ContentView: View {
                 }
             } catch {
                 await MainActor.run {
-                    // Fall back to allowing access if authentication fails
-                    isAuthenticated = true
+                    // Do not authenticate if Face ID fails or is cancelled
+                    isAuthenticated = false
                 }
             }
         }
@@ -93,7 +94,7 @@ struct AuthenticationView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                     
-                    Text("AI Emotional Intelligence Coach")
+                    Text("Emotional Intelligence Coach")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.8))
                 }
@@ -135,6 +136,17 @@ struct AuthenticationView: View {
                 await MainActor.run {
                     if success {
                         isAuthenticated = true
+                    }
+                }
+            } catch let biometricError as BiometricError {
+                await MainActor.run {
+                    switch biometricError {
+                    case .userCancelled:
+                        // Don't show error for user cancellation
+                        break
+                    default:
+                        errorMessage = biometricError.localizedDescription
+                        showingError = true
                     }
                 }
             } catch {

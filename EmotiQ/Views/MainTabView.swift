@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import CoreData
+import Combine
 
 // MARK: - Main Tab View
 /// Production-ready tab navigation structure for EmotiQ
 /// Provides intuitive access to all core features with beautiful design
 struct MainTabView: View {
     @StateObject private var tabViewModel = TabViewModel()
+    @StateObject private var themeManager = ThemeManager()
     @EnvironmentObject private var subscriptionService: SubscriptionService
     @EnvironmentObject private var emotionService: CoreMLEmotionService
     
@@ -57,7 +60,9 @@ struct MainTabView: View {
                 }
                 .tag(TabItem.profile)
         }
-        .accentColor(.purple)
+        .accentColor(ThemeColors.accent)
+        .environmentObject(themeManager)
+        .preferredColorScheme(themeManager.getColorScheme())
         .onAppear {
             setupTabBarAppearance()
             tabViewModel.setSubscriptionService(subscriptionService)
@@ -78,15 +83,21 @@ struct MainTabView: View {
     private func setupTabBarAppearance() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor.systemBackground
         
-        // Selected tab color
-        appearance.stackedLayoutAppearance.selected.iconColor = UIColor.systemPurple
+        // Dynamic background color based on theme
+        if themeManager.isDarkMode {
+            appearance.backgroundColor = UIColor.systemBackground
+        } else {
+            appearance.backgroundColor = UIColor.systemBackground
+        }
+        
+        // Selected tab color - use theme accent
+        appearance.stackedLayoutAppearance.selected.iconColor = UIColor(ThemeColors.accent)
         appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-            .foregroundColor: UIColor.systemPurple
+            .foregroundColor: UIColor(ThemeColors.accent)
         ]
         
-        // Normal tab color
+        // Normal tab color - adaptive
         appearance.stackedLayoutAppearance.normal.iconColor = UIColor.systemGray
         appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
             .foregroundColor: UIColor.systemGray
@@ -134,7 +145,9 @@ enum TabItem: String, CaseIterable {
         case .dashboard, .voice, .profile:
             return false
         case .insights, .coaching:
-            return true
+            // TODO: Re-enable paywall after development/testing
+            return false // Temporarily disabled for development
+            // return true
         }
     }
 }
@@ -174,6 +187,7 @@ class TabViewModel: ObservableObject {
 // MARK: - Dashboard View
 struct DashboardView: View {
     @EnvironmentObject private var emotionService: CoreMLEmotionService
+    @EnvironmentObject private var themeManager: ThemeManager
     @StateObject private var dashboardViewModel = DashboardViewModel()
     
     var body: some View {
@@ -192,10 +206,10 @@ struct DashboardView: View {
                     }
                     
                     // MARK: - Today's Summary
-                    TodaySummaryCard()
+                    TodaySummaryCard(viewModel: dashboardViewModel)
                     
                     // MARK: - Emotion Trends
-                    EmotionTrendsCard()
+                    EmotionTrendsCard(viewModel: dashboardViewModel)
                     
                     Spacer(minLength: 100) // Tab bar spacing
                 }
@@ -203,19 +217,18 @@ struct DashboardView: View {
             }
             .navigationTitle("EmotiQ")
             .navigationBarTitleDisplayMode(.large)
-            .background(
-                LinearGradient(
-                    colors: [Color.purple.opacity(0.1), Color.cyan.opacity(0.1)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .themedBackground(.gradient)
+            .background(ThemeColors.backgroundGradient)
+            .onAppear {
+                dashboardViewModel.refreshData()
+            }
         }
     }
 }
 
 // MARK: - Dashboard Header
 struct DashboardHeaderView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     @State private var currentTime = Date()
     
     var body: some View {
@@ -225,10 +238,11 @@ struct DashboardHeaderView: View {
                     Text(greetingText)
                         .font(.title2)
                         .fontWeight(.medium)
+                        .foregroundColor(ThemeColors.primaryText)
                     
                     Text("How are you feeling today?")
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(ThemeColors.secondaryText)
                 }
                 
                 Spacer()
@@ -237,7 +251,7 @@ struct DashboardHeaderView: View {
                 Button(action: {}) {
                     Image(systemName: "bell")
                         .font(.title2)
-                        .foregroundColor(.purple)
+                        .foregroundColor(ThemeColors.accent)
                 }
             }
         }
@@ -252,24 +266,27 @@ struct DashboardHeaderView: View {
         case 5..<12: return "Good Morning"
         case 12..<17: return "Good Afternoon"
         case 17..<22: return "Good Evening"
-        default: return "Good Night"
+        default: return "Good Evening"
         }
     }
 }
 
 // MARK: - Quick Actions
 struct QuickActionsView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Quick Actions")
                 .font(.headline)
                 .fontWeight(.semibold)
+                .foregroundColor(ThemeColors.primaryText)
             
             HStack(spacing: 15) {
                 QuickActionButton(
                     title: "Voice Check",
                     icon: "waveform.circle.fill",
-                    color: .purple,
+                    color: ThemeColors.accent,
                     action: {}
                 )
                 
@@ -283,14 +300,14 @@ struct QuickActionsView: View {
                 QuickActionButton(
                     title: "Journal",
                     icon: "book.fill",
-                    color: .green,
+                    color: ThemeColors.success,
                     action: {}
                 )
                 
                 QuickActionButton(
                     title: "Insights",
                     icon: "chart.bar.fill",
-                    color: .orange,
+                    color: ThemeColors.warning,
                     action: {}
                 )
             }
@@ -299,6 +316,7 @@ struct QuickActionsView: View {
 }
 
 struct QuickActionButton: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     let title: String
     let icon: String
     let color: Color
@@ -314,13 +332,13 @@ struct QuickActionButton: View {
                 Text(title)
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(.primary)
+                    .foregroundColor(ThemeColors.primaryText)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(color.opacity(0.1))
+                    .fill(color.opacity(themeManager.isDarkMode ? 0.2 : 0.1))
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -329,6 +347,7 @@ struct QuickActionButton: View {
 
 // MARK: - Recent Analysis Card
 struct RecentAnalysisCard: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     let result: EmotionAnalysisResult
     
     var body: some View {
@@ -337,12 +356,13 @@ struct RecentAnalysisCard: View {
                 Text("Latest Analysis")
                     .font(.headline)
                     .fontWeight(.semibold)
+                    .foregroundColor(ThemeColors.primaryText)
                 
                 Spacer()
                 
                 Text(result.timestamp, style: .time)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(ThemeColors.secondaryText)
             }
             
             HStack(spacing: 15) {
@@ -354,6 +374,7 @@ struct RecentAnalysisCard: View {
                     Text(result.primaryEmotion.displayName)
                         .font(.subheadline)
                         .fontWeight(.medium)
+                        .foregroundColor(ThemeColors.primaryText)
                 }
                 
                 Spacer()
@@ -362,31 +383,30 @@ struct RecentAnalysisCard: View {
                 VStack(alignment: .trailing) {
                     Text("Confidence")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(ThemeColors.secondaryText)
                     
                     Text("\(result.confidencePercentage)%")
                         .font(.title3)
                         .fontWeight(.semibold)
-                        .foregroundColor(result.isHighConfidence ? .green : .orange)
+                        .foregroundColor(result.isHighConfidence ? ThemeColors.success : ThemeColors.warning)
                 }
             }
             
             // Coaching tip preview
             Text(result.primaryEmotion.coachingTip)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(ThemeColors.secondaryText)
                 .lineLimit(2)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.regularMaterial)
-        )
+        .themedCard()
     }
 }
 
 // MARK: - Today's Summary Card
 struct TodaySummaryCard: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Today's Summary")
@@ -394,9 +414,9 @@ struct TodaySummaryCard: View {
                 .fontWeight(.semibold)
             
             HStack {
-                SummaryItem(title: "Check-ins", value: "3", icon: "checkmark.circle.fill", color: .green)
-                SummaryItem(title: "Avg Mood", value: "😊", icon: "heart.fill", color: .pink)
-                SummaryItem(title: "Streak", value: "7", icon: "flame.fill", color: .orange)
+                SummaryItem(title: "Check-ins", value: "\(viewModel.todayCheckIns)", icon: "checkmark.circle.fill", color: .green)
+                SummaryItem(title: "Avg Mood", value: viewModel.averageMood.emoji, icon: "heart.fill", color: .pink)
+                SummaryItem(title: "Streak", value: "\(viewModel.currentStreak)", icon: "flame.fill", color: .orange)
             }
         }
         .padding()
@@ -433,6 +453,8 @@ struct SummaryItem: View {
 
 // MARK: - Emotion Trends Card
 struct EmotionTrendsCard: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -447,15 +469,14 @@ struct EmotionTrendsCard: View {
                     .foregroundColor(.purple)
             }
             
-            // Mini trend chart placeholder
             HStack(spacing: 8) {
-                ForEach(0..<7) { day in
+                ForEach(Array(viewModel.weeklyTrendData.enumerated()), id: \.offset) { index, data in
                     VStack {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.purple.opacity(0.7))
-                            .frame(width: 8, height: CGFloat.random(in: 20...60))
+                            .fill(data.emotion.color.opacity(0.7))
+                            .frame(width: 8, height: CGFloat(data.intensity * 60))
                         
-                        Text("\(day + 1)")
+                        Text("\(index + 1)")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -477,17 +498,164 @@ class DashboardViewModel: ObservableObject {
     @Published var todayCheckIns = 0
     @Published var currentStreak = 0
     @Published var averageMood: EmotionCategory = .neutral
+    @Published var weeklyTrendData: [EmotionTrendData] = []
+    
+    private let persistenceController = PersistenceController.shared
+    private var cancellables = Set<AnyCancellable>()
     
     init() {
         loadTodayData()
+        setupNotifications()
+    }
+    
+    func refreshData() {
+        loadTodayData()
+    }
+    
+    private func setupNotifications() {
+        // Listen for new emotional data being saved
+        NotificationCenter.default.publisher(for: .emotionalDataSaved)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshData()
+            }
+            .store(in: &cancellables)
     }
     
     private func loadTodayData() {
-        // Load today's data from Core Data
-        // This would be implemented with actual data fetching
-        todayCheckIns = 3
-        currentStreak = 7
-        averageMood = .joy
+        // Load real data from Core Data
+        loadTodayCheckIns()
+        loadCurrentStreak()
+        loadAverageMood()
+        loadWeeklyTrendData()
+    }
+    
+    private func loadTodayCheckIns() {
+        guard let user = persistenceController.getCurrentUser() else { return }
+        
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        
+        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@ AND timestamp < %@", user, today as NSDate, tomorrow as NSDate)
+        
+        do {
+            let results = try persistenceController.container.viewContext.fetch(request)
+            todayCheckIns = results.count
+        } catch {
+            print("❌ Failed to fetch today's check-ins: \(error)")
+            todayCheckIns = 0
+        }
+    }
+    
+    private func loadCurrentStreak() {
+        guard let user = persistenceController.getCurrentUser() else { return }
+        
+        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@", user)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+        
+        do {
+            let emotionalData = try persistenceController.container.viewContext.fetch(request)
+            currentStreak = calculateCurrentStreak(from: emotionalData)
+        } catch {
+            print("❌ Failed to fetch emotional data for streak: \(error)")
+            currentStreak = 0
+        }
+    }
+    
+    private func loadAverageMood() {
+        guard let user = persistenceController.getCurrentUser() else { return }
+        
+        let calendar = Calendar.current
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        
+        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@", user, weekAgo as NSDate)
+        
+        do {
+            let emotionalData = try persistenceController.container.viewContext.fetch(request)
+            let emotions = emotionalData.compactMap { entity -> EmotionCategory? in
+                guard let emotionString = entity.primaryEmotion else { return nil }
+                return EmotionCategory(rawValue: emotionString)
+            }
+            
+            if !emotions.isEmpty {
+                averageMood = calculateAverageMood(from: emotions)
+            }
+        } catch {
+            print("❌ Failed to fetch emotional data for average mood: \(error)")
+            averageMood = .neutral
+        }
+    }
+    
+    private func loadWeeklyTrendData() {
+        guard let user = persistenceController.getCurrentUser() else { return }
+        
+        let calendar = Calendar.current
+        let today = Date()
+        
+        weeklyTrendData = (0..<7).compactMap { dayOffset in
+            guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { return nil }
+            
+            let dayStart = calendar.startOfDay(for: date)
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? date
+            
+            let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@ AND timestamp < %@", user, dayStart as NSDate, dayEnd as NSDate)
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+            request.fetchLimit = 1
+            
+            do {
+                let results = try persistenceController.container.viewContext.fetch(request)
+                if let lastData = results.first,
+                   let emotionString = lastData.primaryEmotion,
+                   let emotion = EmotionCategory(rawValue: emotionString) {
+                    return EmotionTrendData(
+                        date: date,
+                        emotion: emotion,
+                        intensity: lastData.intensity
+                    )
+                }
+            } catch {
+                print("❌ Failed to fetch trend data for day \(dayOffset): \(error)")
+            }
+            
+            return nil
+        }.reversed()
+    }
+    
+    private func calculateCurrentStreak(from emotionalData: [EmotionalDataEntity]) -> Int {
+        let calendar = Calendar.current
+        let sortedData = emotionalData.sorted { ($0.timestamp ?? Date()) > ($1.timestamp ?? Date()) }
+        
+        var streak = 0
+        var currentDate = Date()
+        
+        for data in sortedData {
+            guard let timestamp = data.timestamp else { continue }
+            
+            let dataDate = calendar.startOfDay(for: timestamp)
+            let expectedDate = calendar.startOfDay(for: currentDate)
+            
+            if calendar.isDate(dataDate, inSameDayAs: expectedDate) {
+                streak += 1
+                currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate) ?? currentDate
+            } else if calendar.dateInterval(of: .day, for: dataDate)?.start ?? dataDate < expectedDate {
+                break
+            }
+        }
+        
+        return streak
+    }
+    
+    private func calculateAverageMood(from emotions: [EmotionCategory]) -> EmotionCategory {
+        let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
+            counts[emotion, default: 0] += 1
+        }
+        
+        return emotionCounts.max(by: { $0.value < $1.value })?.key ?? .neutral
     }
 }
 
@@ -499,5 +667,3 @@ struct MainTabView_Previews: PreviewProvider {
             .environmentObject(CoreMLEmotionService())
     }
 }
-
-

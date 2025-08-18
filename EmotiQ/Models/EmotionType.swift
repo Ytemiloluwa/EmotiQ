@@ -7,8 +7,6 @@
 
 import Foundation
 
-import Foundation
-
 enum EmotionType: String, CaseIterable, Codable {
     case joy = "joy"
     case sadness = "sadness"
@@ -56,7 +54,7 @@ enum EmotionType: String, CaseIterable, Codable {
         }
     }
     
-    var hexcolor: String {
+    var hexColor: String {
         switch self {
         case .joy:
             return "#FFD700"  // Gold

@@ -5,7 +5,6 @@
 //  Created by Temiloluwa on 07-08-2025.
 //
 import SwiftUI
-import Foundation
 
 // MARK: - Audio Level Visualization
 struct AudioLevelVisualization: View {
@@ -105,17 +104,19 @@ struct AudioLevelVisualization: View {
         let centerIndex = numberOfBars / 2
         let maxDistance = Float(numberOfBars / 2)
         
+        // Use timeDelta for adaptive smoothing
+        let baseSmoothingFactor: Float = 0.3
+        let adaptiveSmoothing = min(baseSmoothingFactor, Float(timeDelta * 10.0))
+        
         for i in 0..<numberOfBars {
             let distance = abs(Float(i - centerIndex))
             let falloff = 1.0 - (distance / maxDistance)
             
-            // Add some randomness for natural look
             let randomVariation = Float.random(in: 0.8...1.2)
             let targetLevel = enhancedLevel * falloff * randomVariation
             
-            // Smooth interpolation for natural movement
-            let smoothingFactor: Float = 0.3
-            animatedLevels[i] = animatedLevels[i] * (1 - smoothingFactor) + targetLevel * smoothingFactor
+            // Use adaptive smoothing for natural movement
+            animatedLevels[i] = animatedLevels[i] * (1 - adaptiveSmoothing) + targetLevel * adaptiveSmoothing
             
             // Ensure minimum activity when recording
             if isRecording && enhancedLevel > 0.01 {

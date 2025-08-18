@@ -5,7 +5,6 @@
 //  Created by Temiloluwa on 13-08-2025.
 //
 
-import Foundation
 import SwiftUI
 import AVFoundation
 
@@ -14,36 +13,17 @@ struct VoiceAnalysisView: View {
     @StateObject private var viewModel = VoiceAnalysisViewModel()
     @EnvironmentObject private var emotionService: CoreMLEmotionService
     @EnvironmentObject private var subscriptionService: SubscriptionService
-    @State private var showingResults = false
+    // Navigation state is controlled by the ViewModel
     @State private var showingSubscriptionPaywall = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                // Background gradient
-                LinearGradient(
-                    colors: [Color.purple.opacity(0.1), Color.cyan.opacity(0.1)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                backgroundGradient
                 
                 ScrollView {
                     VStack(spacing: 30) {
-                        // MARK: - Header Section
-                        VStack(spacing: 12) {
-                            Text("Voice Emotion Analysis")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                                .multilineTextAlignment(.center)
-                            
-                            Text("Speak naturally for 2-120 seconds to analyze your emotional state")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
-                        .padding(.top, 20)
+                        headerSection
                         
                         // MARK: - Recording Interface
                         VoiceRecordingInterface(viewModel: viewModel)
@@ -71,9 +51,13 @@ struct VoiceAnalysisView: View {
             }
             .navigationTitle("Voice Check")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showingResults) {
+            .navigationDestination(isPresented: $viewModel.showingAnalysisResult) {
                 if let result = viewModel.analysisResult {
-                    EmotionResultView(result: result)
+                    EmotionResultView(
+                        emotionType: EmotionType(rawValue: result.primaryEmotion.rawValue) ?? .neutral,
+                        confidence: result.confidence,
+                        timestamp: result.timestamp
+                    )
                 }
             }
             .sheet(isPresented: $showingSubscriptionPaywall) {
@@ -96,11 +80,34 @@ struct VoiceAnalysisView: View {
         .onAppear {
             viewModel.checkDailyUsage()
         }
-        .onChange(of: viewModel.analysisResult) { result in
-            if result != nil {
-                showingResults = true
-            }
+
+    }
+    
+    // MARK: - Background Gradient
+    private var backgroundGradient: some View {
+        LinearGradient(
+            colors: [Color.purple.opacity(0.1), Color.cyan.opacity(0.1)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+    
+    // MARK: - Header Section
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            Text("Voice Emotion Analysis")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .multilineTextAlignment(.center)
+            
+            Text("Speak naturally for 2-120 seconds to analyze your emotional state")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
         }
+        .padding(.top, 20)
     }
 }
 
@@ -252,7 +259,7 @@ struct UsageLimitCard: View {
                     .foregroundColor(.secondary)
             } else {
                 let remaining = limit - used
-                Text("\(remaining) analysis\(remaining == 1 ? "" : "es") remaining today")
+                Text("\(remaining) analysis remaining today")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -371,5 +378,11 @@ struct VoiceAnalysisView_Previews: PreviewProvider {
             .environmentObject(CoreMLEmotionService.shared)
             .environmentObject(SubscriptionService.shared)
     }
+}
+
+// MARK: - Notification Extensions
+extension Notification.Name {
+    static let recordingCompleted = Notification.Name("recordingCompleted")
+    static let emotionalDataSaved = Notification.Name("emotionalDataSaved")
 }
 

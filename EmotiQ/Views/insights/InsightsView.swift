@@ -1,12 +1,14 @@
 //
-//  InsightView.swift
+//  InsightsView.swift
 //  EmotiQ
 //
-//  Created by Temiloluwa on 13-08-2025.
+//  Created by Temiloluwa on 18-08-2025.
 //
+
 
 import SwiftUI
 import Charts
+import CoreData
 
 // MARK: - Insights View
 /// Production-ready insights and analytics view with emotion visualization
@@ -27,7 +29,9 @@ struct InsightsView: View {
                 )
                 .ignoresSafeArea()
                 
-                if subscriptionService.hasActiveSubscription {
+                // TODO: Re-enable paywall check when InsightsView is production ready
+                // if subscriptionService.hasActiveSubscription {
+                
                     // Premium insights content
                     ScrollView {
                         VStack(spacing: 20) {
@@ -50,22 +54,26 @@ struct InsightsView: View {
                         }
                         .padding(.horizontal)
                     }
-                } else {
-                    // Premium feature locked state
-                    PremiumFeatureLockedView {
-                        showingSubscriptionPaywall = true
-                    }
-                }
+                
+                // TODO: Re-enable premium feature locked state
+                // } else {
+                //     // Premium feature locked state
+                //     PremiumFeatureLockedView {
+                //         showingSubscriptionPaywall = true
+                //     }
+                // }
             }
             .navigationTitle("Insights")
             .navigationBarTitleDisplayMode(.large)
-            .sheet(isPresented: $showingSubscriptionPaywall) {
-                SubscriptionPaywallView()
-            }
+            // TODO: Re-enable subscription paywall sheet when InsightsView is production ready
+            // .sheet(isPresented: $showingSubscriptionPaywall) {
+            //     SubscriptionPaywallView()
+            // }
             .onAppear {
-                if subscriptionService.hasActiveSubscription {
+                // TODO: Re-enable subscription check when InsightsView is production ready
+                // if subscriptionService.hasActiveSubscription {
                     viewModel.loadInsightsData()
-                }
+                // }
             }
         }
     }
@@ -510,60 +518,266 @@ class InsightsViewModel: ObservableObject {
     @Published var emotionDistribution: [EmotionDistributionData] = []
     @Published var aiInsights: [AIInsight] = []
     
+    private let persistenceController = PersistenceController.shared
+    
     func loadInsightsData() {
-        // Load real data from Core Data in production
-        loadMockData()
+        loadRealData()
     }
     
-    private func loadMockData() {
-        weeklyCheckIns = 12
-        averageMood = .joy
-        currentStreak = 7
+    private func loadRealData() {
+        guard let user = persistenceController.getCurrentUser() else {
+            // No user data available, show empty state
+            resetToEmptyState()
+            return
+        }
         
-        // Mock trend data
+        // Load real emotional data from Core Data
+        let emotionalData = loadEmotionalData(for: user)
+        
+        // Calculate insights from real data
+        calculateInsights(from: emotionalData)
+    }
+    
+    private func loadEmotionalData(for user: User) -> [EmotionalDataEntity] {
+        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "user == %@", user)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+        
+        do {
+            return try persistenceController.container.viewContext.fetch(request)
+        } catch {
+            print("❌ Failed to fetch emotional data: \(error)")
+            return []
+        }
+    }
+    
+    private func calculateInsights(from emotionalData: [EmotionalDataEntity]) {
+        guard !emotionalData.isEmpty else {
+            resetToEmptyState()
+            return
+        }
+        
+        // Calculate weekly check-ins
+        let calendar = Calendar.current
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        weeklyCheckIns = emotionalData.filter { $0.timestamp ?? Date() >= weekAgo }.count
+        
+        // Calculate average mood
+        let emotions = emotionalData.compactMap { entity -> EmotionCategory? in
+            guard let emotionString = entity.primaryEmotion else { return nil }
+            return EmotionCategory(rawValue: emotionString)
+        }
+        
+        if !emotions.isEmpty {
+            averageMood = calculateAverageMood(from: emotions)
+            mostCommonEmotion = calculateMostCommonEmotion(from: emotions)
+        }
+        
+        // Calculate current streak
+        currentStreak = calculateCurrentStreak(from: emotionalData)
+        
+        // Generate trend data
+        trendData = generateTrendData(from: emotionalData)
+        
+        // Generate distribution data
+        emotionDistribution = generateDistributionData(from: emotions)
+        
+        // Generate AI insights
+        aiInsights = generateAIInsights(from: emotionalData, emotions: emotions)
+        
+        // Calculate other metrics
+        emotionalStability = calculateEmotionalStability(from: emotionalData)
+        bestDay = calculateBestDay(from: emotionalData)
+        growthArea = calculateGrowthArea(from: emotionalData)
+    }
+    
+    private func resetToEmptyState() {
+        weeklyCheckIns = 0
+        averageMood = .neutral
+        currentStreak = 0
+        mostCommonEmotion = .neutral
+        emotionalStability = "No Data"
+        bestDay = "No Data"
+        growthArea = "No Data"
+        trendData = []
+        emotionDistribution = []
+        aiInsights = []
+    }
+    
+    private func calculateAverageMood(from emotions: [EmotionCategory]) -> EmotionCategory {
+        // Simple average - in production, you might want more sophisticated analysis
+        let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
+            counts[emotion, default: 0] += 1
+        }
+        
+        return emotionCounts.max(by: { $0.value < $1.value })?.key ?? .neutral
+    }
+    
+    private func calculateMostCommonEmotion(from emotions: [EmotionCategory]) -> EmotionCategory {
+        let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
+            counts[emotion, default: 0] += 1
+        }
+        
+        return emotionCounts.max(by: { $0.value < $1.value })?.key ?? .neutral
+    }
+    
+    private func calculateCurrentStreak(from emotionalData: [EmotionalDataEntity]) -> Int {
+        let calendar = Calendar.current
+        let sortedData = emotionalData.sorted { ($0.timestamp ?? Date()) > ($1.timestamp ?? Date()) }
+        
+        var streak = 0
+        var currentDate = Date()
+        
+        for data in sortedData {
+            guard let timestamp = data.timestamp else { continue }
+            
+            let dataDate = calendar.startOfDay(for: timestamp)
+            let expectedDate = calendar.startOfDay(for: currentDate)
+            
+            if calendar.isDate(dataDate, inSameDayAs: expectedDate) {
+                streak += 1
+                currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate) ?? currentDate
+            } else if calendar.dateInterval(of: .day, for: dataDate)?.start ?? dataDate < expectedDate {
+                break
+            }
+        }
+        
+        return streak
+    }
+    
+    private func generateTrendData(from emotionalData: [EmotionalDataEntity]) -> [EmotionTrendData] {
         let calendar = Calendar.current
         let today = Date()
-        trendData = (0..<7).compactMap { dayOffset in
+        
+        return (0..<7).compactMap { dayOffset in
             guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { return nil }
+            
+            let dayStart = calendar.startOfDay(for: date)
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? date
+            
+            let dayData = emotionalData.filter { entity in
+                guard let timestamp = entity.timestamp else { return false }
+                return timestamp >= dayStart && timestamp < dayEnd
+            }
+            
+            if let lastData = dayData.first,
+               let emotionString = lastData.primaryEmotion,
+               let emotion = EmotionCategory(rawValue: emotionString) {
             return EmotionTrendData(
                 date: date,
-                emotion: EmotionCategory.allCases.randomElement() ?? .neutral,
-                intensity: Double.random(in: 0.3...1.0)
+                    emotion: emotion,
+                    intensity: lastData.intensity
             )
+            }
+            
+            return nil
         }.reversed()
+    }
+    
+    private func generateDistributionData(from emotions: [EmotionCategory]) -> [EmotionDistributionData] {
+        let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
+            counts[emotion, default: 0] += 1
+        }
         
-        // Mock distribution data
-        emotionDistribution = [
-            EmotionDistributionData(emotion: .joy, percentage: 35),
-            EmotionDistributionData(emotion: .surprise, percentage: 25),
-            EmotionDistributionData(emotion: .neutral, percentage: 20),
-            EmotionDistributionData(emotion: .disgust, percentage: 10),
-            EmotionDistributionData(emotion: .sadness, percentage: 6),
-            EmotionDistributionData(emotion: .anger, percentage: 3),
-            EmotionDistributionData(emotion: .fear, percentage: 1)
-        ]
+        let total = emotions.count
+        guard total > 0 else { return [] }
         
-        // Mock AI insights
-        aiInsights = [
-            AIInsight(
-                title: "Positive Trend Detected",
-                description: "Your emotional well-being has improved 23% this week compared to last week.",
-                icon: "chart.line.uptrend.xyaxis",
-                color: .green
-            ),
-            AIInsight(
-                title: "Morning Pattern",
-                description: "You tend to feel most positive during morning hours (8-11 AM).",
-                icon: "sun.max",
+        var distributionData: [EmotionDistributionData] = []
+        
+        for emotion in EmotionCategory.allCases {
+            let count = emotionCounts[emotion] ?? 0
+            let percentage = Int((Double(count) / Double(total)) * 100)
+            
+            if percentage > 0 {
+                let data = EmotionDistributionData(emotion: emotion, percentage: Double(percentage))
+                distributionData.append(data)
+            }
+        }
+        
+        return distributionData
+    }
+    
+    private func generateAIInsights(from emotionalData: [EmotionalDataEntity], emotions: [EmotionCategory]) -> [AIInsight] {
+        var insights: [AIInsight] = []
+        
+        // Insight 1: Most common emotion
+        let mostCommon = calculateMostCommonEmotion(from: emotions)
+        insights.append(AIInsight(
+            title: "Most Common Emotion",
+            description: "You've been feeling \(mostCommon.displayName.lowercased()) most often recently.",
+            icon: "brain.head.profile",
+            color: .blue
+        ))
+        
+        // Insight 2: Streak information
+        if currentStreak > 0 {
+            insights.append(AIInsight(
+                title: "Consistent Check-ins",
+                description: "You've been checking in for \(currentStreak) consecutive days. Great consistency!",
+                icon: "flame.fill",
                 color: .orange
-            ),
-            AIInsight(
-                title: "Stress Trigger",
-                description: "Consider stress management techniques for Tuesday afternoons.",
-                icon: "exclamationmark.triangle",
-                color: .yellow
-            )
-        ]
+            ))
+        }
+        
+        // Insight 3: Weekly activity
+        if weeklyCheckIns > 0 {
+            insights.append(AIInsight(
+                title: "Weekly Activity",
+                description: "You've completed \(weeklyCheckIns) emotional check-ins this week.",
+                icon: "chart.bar.fill",
+                color: .green
+            ))
+        }
+        
+        return insights
+    }
+    
+    private func calculateEmotionalStability(from emotionalData: [EmotionalDataEntity]) -> String {
+        // Simple stability calculation based on emotion variety
+        let uniqueEmotions = Set(emotionalData.compactMap { $0.primaryEmotion })
+        
+        switch uniqueEmotions.count {
+        case 0...1: return "Very Stable"
+        case 2...3: return "Stable"
+        case 4...5: return "Variable"
+        default: return "Dynamic"
+        }
+    }
+    
+    private func calculateBestDay(from emotionalData: [EmotionalDataEntity]) -> String {
+        let calendar = Calendar.current
+        let weekdayCounts = emotionalData.reduce(into: [Int: Int]()) { counts, data in
+            guard let timestamp = data.timestamp else { return }
+            let weekday = calendar.component(.weekday, from: timestamp)
+            counts[weekday, default: 0] += 1
+        }
+        
+        guard let bestWeekday = weekdayCounts.max(by: { $0.value < $1.value })?.key else {
+            return "No Data"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.weekdaySymbols[bestWeekday - 1]
+        return formatter.weekdaySymbols[bestWeekday - 1]
+    }
+    
+    private func calculateGrowthArea(from emotionalData: [EmotionalDataEntity]) -> String {
+        // Simple growth area calculation
+        let negativeEmotions = emotionalData.filter { entity in
+            guard let emotionString = entity.primaryEmotion else { return false }
+            let emotion = EmotionCategory(rawValue: emotionString)
+            return emotion == .sadness || emotion == .anger || emotion == .fear
+        }
+        
+        let negativePercentage = Double(negativeEmotions.count) / Double(emotionalData.count)
+        
+        if negativePercentage > 0.5 {
+            return "Emotional Regulation"
+        } else if negativePercentage > 0.3 {
+            return "Stress Management"
+        } else {
+            return "Emotional Awareness"
+        }
     }
 }
 
@@ -589,5 +803,4 @@ struct InsightsView_Previews: PreviewProvider {
             .environmentObject(SubscriptionService())
     }
 }
-
 

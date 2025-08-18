@@ -10,7 +10,6 @@ import SwiftUI
 
 // MARK: - Emotion Category Model
 /// Represents the 7 core emotion categories used in EmotiQ's analysis system
-/// Based on psychological research and optimized for voice analysis accuracy
 enum EmotionCategory: String, CaseIterable, Identifiable {
     case joy = "joy"
     case sadness = "sadness"
@@ -110,6 +109,111 @@ enum EmotionCategory: String, CaseIterable, Identifiable {
         }
     }
     
+    /// Enhanced coaching recommendations based on intensity level and sub-emotion
+    func getEnhancedCoaching(intensity: EmotionIntensity, subEmotion: SubEmotion) -> EnhancedCoaching {
+        let baseStrategy = getIntensitySpecificStrategy(intensity: intensity)
+        let subEmotionGuidance = getSubEmotionGuidance(subEmotion: subEmotion, intensity: intensity)
+        let actionSteps = getActionSteps(emotion: self, intensity: intensity, subEmotion: subEmotion)
+        
+        return EnhancedCoaching(
+            primaryStrategy: baseStrategy,
+            subEmotionGuidance: subEmotionGuidance,
+            actionSteps: actionSteps,
+            urgencyLevel: getUrgencyLevel(intensity: intensity),
+            timeframe: getRecommendedTimeframe(intensity: intensity),
+            followUpSuggestions: getFollowUpSuggestions(emotion: self, intensity: intensity)
+        )
+    }
+    
+    private func getIntensitySpecificStrategy(intensity: EmotionIntensity) -> String {
+        switch (self, intensity) {
+        // Joy strategies
+        case (.joy, .low):
+            return "Gently nurture this positive feeling through small acts of self-care and appreciation."
+        case (.joy, .medium):
+            return "Celebrate this wonderful feeling! Share it with loved ones and use this energy for meaningful activities."
+        case (.joy, .high):
+            return "Channel this intense joy mindfully. Consider creative expression or planning exciting future goals while staying grounded."
+            
+        // Sadness strategies
+        case (.sadness, .low):
+            return "Acknowledge this gentle sadness. Practice self-compassion and allow yourself to feel without judgment."
+        case (.sadness, .medium):
+            return "Honor your sadness with healthy processing. Consider journaling, talking to someone you trust, or gentle physical activity."
+        case (.sadness, .high):
+            return "This intense sadness needs attention. Reach out for support, consider professional help if persistent, and focus on basic self-care."
+            
+        // Anger strategies
+        case (.anger, .low):
+            return "Notice this irritation calmly. Use it as information about your boundaries and needs."
+        case (.anger, .medium):
+            return "Channel this anger constructively. Exercise, express your needs clearly, or work on problem-solving."
+        case (.anger, .high):
+            return "This intense anger needs immediate healthy outlets. Take a break, use physical exercise, practice deep breathing, and consider talking to someone."
+            
+        // Fear strategies
+        case (.fear, .low):
+            return "Acknowledge this concern gently. Use grounding techniques and rational thinking to assess the situation."
+        case (.fear, .medium):
+            return "Address this fear with courage. Break down what's worrying you and take small, manageable steps forward."
+        case (.fear, .high):
+            return "This intense fear needs immediate attention. Focus on safety, use deep breathing, and consider seeking support or professional help."
+            
+        // Other emotions...
+        default:
+            return coachingTip
+        }
+    }
+    
+    private func getSubEmotionGuidance(subEmotion: SubEmotion, intensity: EmotionIntensity) -> String {
+        let intensityModifier = intensity == .high ? "intense " : intensity == .low ? "gentle " : ""
+        return "Your \(intensityModifier)\(subEmotion.displayName.lowercased()) suggests specific needs for support and growth."
+    }
+    
+    private func getActionSteps(emotion: EmotionCategory, intensity: EmotionIntensity, subEmotion: SubEmotion) -> [String] {
+        switch intensity {
+        case .low:
+            return ["Take gentle, mindful action", "Practice self-awareness", "Use this as learning opportunity"]
+        case .medium:
+            return ["Take deliberate action today", "Reach out for support if needed", "Monitor your emotional state"]
+        case .high:
+            return ["Take immediate action", "Seek support now", "Focus on safety and wellbeing", "Consider professional help"]
+        }
+    }
+    
+    private func getUrgencyLevel(intensity: EmotionIntensity) -> UrgencyLevel {
+        switch intensity {
+        case .low: return .low
+        case .medium: return .medium
+        case .high: return .high
+        }
+    }
+    
+    private func getRecommendedTimeframe(intensity: EmotionIntensity) -> String {
+        switch intensity {
+        case .low: return "Take gentle action over the next few days"
+        case .medium: return "Address this within the next 24 hours"
+        case .high: return "Take immediate action now"
+        }
+    }
+    
+    private func getFollowUpSuggestions(emotion: EmotionCategory, intensity: EmotionIntensity) -> [String] {
+        let baseFollowUps = [
+            "Check in with yourself regularly",
+            "Notice patterns in your emotional responses",
+            "Practice self-compassion"
+        ]
+        
+        if intensity == .high {
+            return baseFollowUps + [
+                "Consider professional support if feelings persist",
+                "Monitor your emotional wellbeing closely"
+            ]
+        }
+        
+        return baseFollowUps
+    }
+    
     var affirmation: String {
         switch self {
         case .joy:
@@ -154,27 +258,6 @@ enum EmotionCategory: String, CaseIterable, Identifiable {
 }
 
 // MARK: - Supporting Enums
-enum EmotionIntensity: String, CaseIterable {
-    case low = "low"
-    case medium = "medium"
-    case high = "high"
-    
-    var displayName: String {
-        switch self {
-        case .low: return "Low"
-        case .medium: return "Medium"
-        case .high: return "High"
-        }
-    }
-    
-    var multiplier: Double {
-        switch self {
-        case .low: return 0.3
-        case .medium: return 0.6
-        case .high: return 1.0
-        }
-    }
-}
 
 enum EmotionValence: String, CaseIterable {
     case positive = "positive"
@@ -203,19 +286,29 @@ struct EmotionAnalysisResult: Identifiable, Equatable {
     let id: UUID
     let timestamp: Date
     let primaryEmotion: EmotionCategory
+    let subEmotion: SubEmotion
+    let intensity: EmotionIntensity
     let confidence: Double
     let emotionScores: [EmotionCategory: Double]
+    let subEmotionScores: [SubEmotion: Double]
     let audioQuality: AudioQuality
     let sessionDuration: TimeInterval
     
-    init(timestamp: Date = Date(), primaryEmotion: EmotionCategory, confidence: Double, emotionScores: [EmotionCategory: Double], audioQuality: AudioQuality, sessionDuration: TimeInterval) {
+    // PRODUCTION: Real audio features extracted during analysis
+    let audioFeatures: ProductionAudioFeatures?
+    
+    init(timestamp: Date = Date(), primaryEmotion: EmotionCategory, subEmotion: SubEmotion, intensity: EmotionIntensity, confidence: Double, emotionScores: [EmotionCategory: Double], subEmotionScores: [SubEmotion: Double], audioQuality: AudioQuality, sessionDuration: TimeInterval, audioFeatures: ProductionAudioFeatures? = nil) {
         self.id = UUID()
         self.timestamp = timestamp
         self.primaryEmotion = primaryEmotion
+        self.subEmotion = subEmotion
+        self.intensity = intensity
         self.confidence = confidence
         self.emotionScores = emotionScores
+        self.subEmotionScores = subEmotionScores
         self.audioQuality = audioQuality
         self.sessionDuration = sessionDuration
+        self.audioFeatures = audioFeatures
     }
     
     // Computed properties
@@ -234,48 +327,259 @@ struct EmotionAnalysisResult: Identifiable, Equatable {
             .prefix(2)
             .map { ($0.key, $0.value) }
     }
+    
+    // MARK: - Equatable Implementation
+    static func == (lhs: EmotionAnalysisResult, rhs: EmotionAnalysisResult) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.timestamp == rhs.timestamp &&
+               lhs.primaryEmotion == rhs.primaryEmotion &&
+               lhs.subEmotion == rhs.subEmotion &&
+               lhs.intensity == rhs.intensity &&
+               lhs.confidence == rhs.confidence &&
+               lhs.audioQuality == rhs.audioQuality &&
+               lhs.sessionDuration == rhs.sessionDuration
+    }
 }
 
-// MARK: - Audio Quality Assessment
-enum AudioQuality: String, CaseIterable, Codable {
-    case excellent = "excellent"
-    case good = "good"
-    case fair = "fair"
-    case poor = "poor"
+
+
+// MARK: - Enhanced Coaching System
+
+/// Enhanced coaching recommendations with intensity and sub-emotion awareness
+struct EnhancedCoaching {
+    let primaryStrategy: String
+    let subEmotionGuidance: String
+    let actionSteps: [String]
+    let urgencyLevel: UrgencyLevel
+    let timeframe: String
+    let followUpSuggestions: [String]
+}
+
+/// Urgency levels for coaching interventions
+enum UrgencyLevel: String, CaseIterable {
+    case low = "low"
+    case medium = "medium"
+    case high = "high"
     
     var displayName: String {
         switch self {
-        case .excellent: return "Excellent"
-        case .good: return "Good"
-        case .fair: return "Fair"
-        case .poor: return "Poor"
+        case .low: return "Urgent Attention"
+        case .medium: return "Important Notice"
+        case .high: return "Gentle Reminder"
         }
     }
     
     var color: Color {
         switch self {
-        case .excellent: return .green
-        case .good: return .blue
-        case .fair: return .orange
-        case .poor: return .red
+        case .low: return .orange
+        case .medium: return .yellow
+        case .high: return .green
         }
     }
     
     var icon: String {
         switch self {
-        case .excellent: return "checkmark.circle.fill"
-        case .good: return "checkmark.circle"
-        case .fair: return "exclamationmark.triangle"
-        case .poor: return "xmark.circle"
+        case .low: return "heart.fill"
+        case .medium: return "brain.head.profile"
+        case .high: return "bolt.fill"
+        }
+    }
+}
+
+// MARK: - Sub-Emotions and Intensity Levels
+
+/// Sub-emotions provide granular categorization within main emotion categories
+enum SubEmotion: String, CaseIterable, Identifiable {
+    // Joy sub-emotions
+    case happiness = "happiness"
+    case excitement = "excitement"
+    case contentment = "contentment"
+    case euphoria = "euphoria"
+    case optimism = "optimism"
+    case gratitude = "gratitude"
+    
+    // Sadness sub-emotions
+    case melancholy = "melancholy"
+    case grief = "grief"
+    case disappointment = "disappointment"
+    case loneliness = "loneliness"
+    case despair = "despair"
+    case sorrow = "sorrow"
+    
+    // Anger sub-emotions
+    case frustration = "frustration"
+    case irritation = "irritation"
+    case rage = "rage"
+    case resentment = "resentment"
+    case indignation = "indignation"
+    case hostility = "hostility"
+    
+    // Fear sub-emotions
+    case anxiety = "anxiety"
+    case worry = "worry"
+    case nervousness = "nervousness"
+    case panic = "panic"
+    case dread = "dread"
+    case apprehension = "apprehension"
+    
+    // Surprise sub-emotions
+    case amazement = "amazement"
+    case astonishment = "astonishment"
+    case bewilderment = "bewilderment"
+    case curiosity = "curiosity"
+    case confusion = "confusion"
+    case wonder = "wonder"
+    
+    // Disgust sub-emotions
+    case contempt = "contempt"
+    case aversion = "aversion"
+    case repulsion = "repulsion"
+    case revulsion = "revulsion"
+    case loathing = "loathing"
+    case distaste = "distaste"
+    
+    // Neutral variations
+    case calm = "calm"
+    case balanced = "balanced"
+    case stable = "stable"
+    case peaceful = "peaceful"
+    case composed = "composed"
+    case indifferent = "indifferent"
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        return rawValue.capitalized
+    }
+    
+    var parentEmotion: EmotionCategory {
+        switch self {
+        case .happiness, .excitement, .contentment, .euphoria, .optimism, .gratitude:
+            return .joy
+        case .melancholy, .grief, .disappointment, .loneliness, .despair, .sorrow:
+            return .sadness
+        case .frustration, .irritation, .rage, .resentment, .indignation, .hostility:
+            return .anger
+        case .anxiety, .worry, .nervousness, .panic, .dread, .apprehension:
+            return .fear
+        case .amazement, .astonishment, .bewilderment, .curiosity, .confusion, .wonder:
+            return .surprise
+        case .contempt, .aversion, .repulsion, .revulsion, .loathing, .distaste:
+            return .disgust
+        case .calm, .balanced, .stable, .peaceful, .composed, .indifferent:
+            return .neutral
         }
     }
     
-    var reliabilityScore: Double {
+    var emoji: String {
         switch self {
-        case .excellent: return 1.0
-        case .good: return 0.8
-        case .fair: return 0.6
-        case .poor: return 0.3
+        case .happiness: return "😊"
+        case .excitement: return "🤩"
+        case .contentment: return "😌"
+        case .euphoria: return "🥳"
+        case .optimism: return "😄"
+        case .gratitude: return "🙏"
+            
+        case .melancholy: return "😔"
+        case .grief: return "😭"
+        case .disappointment: return "😞"
+        case .loneliness: return "😢"
+        case .despair: return "😰"
+        case .sorrow: return "😿"
+            
+        case .frustration: return "😤"
+        case .irritation: return "😒"
+        case .rage: return "🤬"
+        case .resentment: return "😠"
+        case .indignation: return "😡"
+        case .hostility: return "👿"
+            
+        case .anxiety: return "😟"
+        case .worry: return "😧"
+        case .nervousness: return "😬"
+        case .panic: return "😱"
+        case .dread: return "😨"
+        case .apprehension: return "😰"
+            
+        case .amazement: return "😯"
+        case .astonishment: return "😲"
+        case .bewilderment: return "😵"
+        case .curiosity: return "🤔"
+        case .confusion: return "😕"
+        case .wonder: return "😮"
+            
+        case .contempt: return "😏"
+        case .aversion: return "🤢"
+        case .repulsion: return "🤮"
+        case .revulsion: return "😖"
+        case .loathing: return "🤭"
+        case .distaste: return "😒"
+            
+        case .calm: return "😌"
+        case .balanced: return "😐"
+        case .stable: return "🙂"
+        case .peaceful: return "😇"
+        case .composed: return "😊"
+        case .indifferent: return "😑"
+        }
+    }
+}
+
+/// Emotion intensity levels for granular analysis
+enum EmotionIntensity: String, CaseIterable, Identifiable {
+    case low = "low"
+    case medium = "medium"
+    case high = "high"
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .low: return .orange
+        case .medium: return .yellow
+        case .high: return .green
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .low: return "1.circle.fill"
+        case .medium: return "2.circle.fill"
+        case .high: return "3.circle.fill"
+        }
+    }
+    
+    var threshold: Double {
+        switch self {
+        case .low: return 0.3
+        case .medium: return 0.6
+        case .high: return 1.0
+        }
+    }
+    
+    var multiplier: Double {
+        switch self {
+        case .low: return 0.3
+        case .medium: return 0.6
+        case .high: return 1.0
+        }
+    }
+    
+    static func from(score: Double) -> EmotionIntensity {
+        if score <= 0.3 {
+            return .low
+        } else if score <= 0.6 {
+            return .medium
+        } else {
+            return .high
         }
     }
 }
@@ -332,5 +636,4 @@ enum TrendTimeframe: String, CaseIterable {
         }
     }
 }
-
 

@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Real User Voice Analysis Data Model
+/// Represents the result of analyzing a user's voice recording for emotions
 struct EmotionalData: Identifiable, Codable {
     var id = UUID()
     let timestamp: Date
@@ -33,28 +35,150 @@ struct EmotionalData: Identifiable, Codable {
     }
 }
 
+// MARK: - Voice Features from Real Audio Analysis
+/// Contains actual voice characteristics extracted from user recordings
+/// Enhanced with critical features for better emotion analysis and historical data preservation
 struct VoiceFeatures: Codable {
+    // Core features (existing)
     let pitch: Double
     let energy: Double
     let tempo: Double
     let spectralCentroid: Double
     let mfccCoefficients: [Double]
     
+    // Enhanced features for better emotion analysis (NEW)
+    let jitter: Double?              // Voice instability - critical for stress/anxiety detection
+    let shimmer: Double?             // Amplitude variation - important for voice quality assessment
+    let formantFrequencies: [Double]? // Vocal tract characteristics - most important for emotion distinction
+    let harmonicToNoiseRatio: Double? // Voice quality indicator - important for emotional stability
+    let zeroCrossingRate: Double?    // Temporal characteristics - moderate importance
+    let spectralRolloff: Double?     // Spectral characteristics - important for surprise/anger
+    let voiceOnsetTime: Double?      // Timing characteristics - important for hesitation detection
+    
     init(
         pitch: Double,
         energy: Double,
         tempo: Double,
         spectralCentroid: Double,
-        mfccCoefficients: [Double]
+        mfccCoefficients: [Double],
+        jitter: Double? = nil,
+        shimmer: Double? = nil,
+        formantFrequencies: [Double]? = nil,
+        harmonicToNoiseRatio: Double? = nil,
+        zeroCrossingRate: Double? = nil,
+        spectralRolloff: Double? = nil,
+        voiceOnsetTime: Double? = nil
     ) {
         self.pitch = pitch
         self.energy = energy
         self.tempo = tempo
         self.spectralCentroid = spectralCentroid
         self.mfccCoefficients = mfccCoefficients
+        self.jitter = jitter
+        self.shimmer = shimmer
+        self.formantFrequencies = formantFrequencies
+        self.harmonicToNoiseRatio = harmonicToNoiseRatio
+        self.zeroCrossingRate = zeroCrossingRate
+        self.spectralRolloff = spectralRolloff
+        self.voiceOnsetTime = voiceOnsetTime
+    }
+    
+    /// Creates VoiceFeatures from ProductionAudioFeatures with complete data preservation
+    static func fromProductionFeatures(_ production: ProductionAudioFeatures) -> VoiceFeatures {
+        // Convert core features
+        let pitch = Double(production.pitch)
+        let energy = Double(production.energy)
+        let tempo = calculateTempoFromFeatures(production)
+        let spectralCentroid = Double(production.spectralCentroid)
+        let mfccCoefficients = production.mfccCoefficients.map { Double($0) }
+        
+        // Convert enhanced features
+        let jitter = Double(production.jitter)
+        let shimmer = Double(production.shimmer)
+        let formantFrequencies = production.formantFrequencies.map { Double($0) }
+        let harmonicToNoiseRatio = Double(production.harmonicToNoiseRatio)
+        let zeroCrossingRate = Double(production.zeroCrossingRate)
+        let spectralRolloff = Double(production.spectralRolloff)
+        let voiceOnsetTime = Double(production.voiceOnsetTime)
+        
+        return VoiceFeatures(
+            pitch: pitch,
+            energy: energy,
+            tempo: tempo,
+            spectralCentroid: spectralCentroid,
+            mfccCoefficients: mfccCoefficients,
+            jitter: jitter,
+            shimmer: shimmer,
+            formantFrequencies: formantFrequencies,
+            harmonicToNoiseRatio: harmonicToNoiseRatio,
+            zeroCrossingRate: zeroCrossingRate,
+            spectralRolloff: spectralRolloff,
+            voiceOnsetTime: voiceOnsetTime
+        )
+    }
+    
+    /// Calculates tempo from available features when not directly available
+    private static func calculateTempoFromFeatures(_ features: ProductionAudioFeatures) -> Double {
+        // Estimate tempo from zero crossing rate and energy variations
+        let baseTempo = Double(features.zeroCrossingRate) * 60.0 // Convert to BPM-like measure
+        let energyFactor = Double(features.energy) * 30.0 // Energy influences perceived tempo
+        
+        // Normalize to reasonable tempo range (60-180 BPM)
+        let estimatedTempo = baseTempo + energyFactor
+        return max(60.0, min(180.0, estimatedTempo))
+    }
+    
+    /// Returns a summary of available features for debugging
+    var featureSummary: String {
+        var summary = "Pitch: \(pitch), Energy: \(energy), Tempo: \(tempo)"
+        
+        // Add jitter if available
+        if let jitter = jitter {
+            summary += ", Jitter: \(jitter)"
+        }
+        
+        // Add shimmer if available
+        if let shimmer = shimmer {
+            summary += ", Shimmer: \(shimmer)"
+        }
+        
+        // Add formants if available
+        if let formants = formantFrequencies, !formants.isEmpty {
+            let formantStrings = formants.prefix(2).map { String(format: "%.0f", $0) }
+            let formantText = formantStrings.joined(separator: ",")
+            summary += ", Formants: \(formantText)"
+        }
+        
+        // Add HNR if available
+        if let hnr = harmonicToNoiseRatio {
+            let hnrText = String(format: "%.1f", hnr)
+            summary += ", HNR: \(hnrText)"
+        }
+        
+        return summary
+    }
+    
+    /// Checks if enhanced features are available
+    var hasEnhancedFeatures: Bool {
+        return jitter != nil || shimmer != nil || formantFrequencies != nil || harmonicToNoiseRatio != nil
+    }
+    
+    /// Returns the number of available features
+    var featureCount: Int {
+        var count = 5 // Core features always present
+        if jitter != nil { count += 1 }
+        if shimmer != nil { count += 1 }
+        if formantFrequencies != nil { count += formantFrequencies!.count }
+        if harmonicToNoiseRatio != nil { count += 1 }
+        if zeroCrossingRate != nil { count += 1 }
+        if spectralRolloff != nil { count += 1 }
+        if voiceOnsetTime != nil { count += 1 }
+        return count
     }
 }
 
+// MARK: - Emotional Context
+/// Provides context about when and where the emotion was recorded
 struct EmotionalContext: Codable {
     let timeOfDay: String
     let dayOfWeek: String
@@ -76,46 +200,3 @@ struct EmotionalContext: Codable {
         self.notes = notes
     }
 }
-
-extension EmotionalData {
-    static let sampleData: [EmotionalData] = [
-        EmotionalData(
-            timestamp: Date().addingTimeInterval(-3600),
-            primaryEmotion: .joy,
-            confidence: 0.85,
-            intensity: 0.7,
-            voiceFeatures: VoiceFeatures(
-                pitch: 220.0,
-                energy: 0.8,
-                tempo: 1.2,
-                spectralCentroid: 1500.0,
-                mfccCoefficients: [1.2, 0.8, 0.5, 0.3, 0.2]
-            ),
-            context: EmotionalContext(
-                timeOfDay: "Morning",
-                dayOfWeek: "Monday",
-                activity: "Coffee break"
-            )
-        ),
-        EmotionalData(
-            timestamp: Date().addingTimeInterval(-7200),
-            primaryEmotion: .neutral,
-            confidence: 0.92,
-            intensity: 0.4,
-            voiceFeatures: VoiceFeatures(
-                pitch: 180.0,
-                energy: 0.5,
-                tempo: 1.0,
-                spectralCentroid: 1200.0,
-                mfccCoefficients: [0.8, 0.6, 0.4, 0.2, 0.1]
-            ),
-            context: EmotionalContext(
-                timeOfDay: "Evening",
-                dayOfWeek: "Sunday",
-                activity: "Relaxing"
-            )
-        )
-    ]
-}
-
-

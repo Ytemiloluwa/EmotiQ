@@ -8,6 +8,8 @@
 import Foundation
 import AVFoundation
 import Combine
+import Speech
+
 
 protocol VoiceRecordingServiceProtocol {
     var isRecording: AnyPublisher<Bool, Never> { get }
@@ -22,42 +24,7 @@ protocol VoiceRecordingServiceProtocol {
     func validateAudioQuality(url: URL) -> AnyPublisher<VoiceQuality, Error>
 }
 
-enum VoiceQuality: String, CaseIterable {
-    case excellent = "excellent"
-    case good = "good"
-    case fair = "fair"
-    case poor = "poor"
-    
-    var displayName: String {
-        switch self {
-        case .excellent:
-            return "Excellent"
-        case .good:
-            return "Good"
-        case .fair:
-            return "Fair"
-        case .poor:
-            return "Poor"
-        }
-    }
-    
-    var confidence: Double {
-        switch self {
-        case .excellent:
-            return 0.95
-        case .good:
-            return 0.80
-        case .fair:
-            return 0.65
-        case .poor:
-            return 0.40
-        }
-    }
-    
-    var isAcceptable: Bool {
-        return self != .poor
-    }
-}
+// Using VoiceQuality from AudioProcessingService for consistency
 
 enum VoiceRecordingError: Error, LocalizedError {
     case permissionDenied
@@ -72,7 +39,7 @@ enum VoiceRecordingError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Microphone permission is required to record your voice."
+            return "Microphone and speech recognition permissions are required to record and analyze your voice."
         case .audioSessionSetupFailed:
             return "Failed to setup audio session. Please try again."
         case .recordingFailed:
@@ -126,7 +93,7 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
     // MARK: - Audio Settings
     private let audioSettings: [String: Any] = [
         AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-        AVSampleRateKey: Config.VoiceAnalysis.sampleRate,
+        AVSampleRateKey: 44100, // Standard sample rate
         AVNumberOfChannelsKey: 1,
         AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         AVEncoderBitRateKey: 128000
@@ -162,12 +129,53 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
     
     func requestPermission() -> AnyPublisher<Bool, Error> {
         return Future { [weak self] promise in
-            self?.audioSession.requestRecordPermission { granted in
-                DispatchQueue.main.async {
-                    if Config.isDebugMode {
-                        print("🎤 Microphone permission: \(granted ? "✅ Granted" : "❌ Denied")")
+            if #available(iOS 17.0, *) {
+                // Use new iOS 17+ API
+                AVAudioApplication.requestRecordPermission { granted in
+                    DispatchQueue.main.async {
+                        if Config.isDebugMode {
+                            print("🎤 Microphone permission: \(granted ? "✅ Granted" : "❌ Denied")")
+                        }
+                        
+                        if granted {
+                            // Request speech recognition permission after microphone permission is granted
+                            SFSpeechRecognizer.requestAuthorization { speechStatus in
+                                DispatchQueue.main.async {
+                                    let speechGranted = speechStatus == .authorized
+                                    if Config.isDebugMode {
+                                        print("🎤 Speech recognition permission: \(speechGranted ? "✅ Granted" : "❌ Denied")")
+                                    }
+                                    promise(.success(granted && speechGranted))
+                                }
+                            }
+                        } else {
+                            promise(.success(false))
+                        }
                     }
-                    promise(.success(granted))
+                }
+            } else {
+                // Fallback for iOS 16 and earlier
+                self?.audioSession.requestRecordPermission { granted in
+                    DispatchQueue.main.async {
+                        if Config.isDebugMode {
+                            print("🎤 Microphone permission: \(granted ? "✅ Granted" : "❌ Denied")")
+                        }
+                        
+                        if granted {
+                            // Request speech recognition permission after microphone permission is granted
+                            SFSpeechRecognizer.requestAuthorization { speechStatus in
+                                DispatchQueue.main.async {
+                                    let speechGranted = speechStatus == .authorized
+                                    if Config.isDebugMode {
+                                        print("🎤 Speech recognition permission: \(speechGranted ? "✅ Granted" : "❌ Denied")")
+                                    }
+                                    promise(.success(granted && speechGranted))
+                                }
+                            }
+                        } else {
+                            promise(.success(false))
+                        }
+                    }
                 }
             }
         }
@@ -190,14 +198,29 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
             }
             
             // Check microphone permission
-            guard self.audioSession.recordPermission == .granted else {
+            let hasMicrophonePermission: Bool
+            if #available(iOS 17.0, *) {
+                hasMicrophonePermission = AVAudioApplication.shared.recordPermission == .granted
+            } else {
+                hasMicrophonePermission = self.audioSession.recordPermission == .granted
+            }
+            
+            guard hasMicrophonePermission else {
+                promise(.failure(.permissionDenied))
+                return
+            }
+            
+            // Check speech recognition permission
+            let hasSpeechPermission = SFSpeechRecognizer.authorizationStatus() == .authorized
+            
+            guard hasSpeechPermission else {
                 promise(.failure(.permissionDenied))
                 return
             }
             
             // Setup recording URL
             let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let audioFilename = documentsPath.appendingPathComponent("voice_recording_\(Date().timeIntervalSince1970).\(Config.VoiceAnalysis.audioFormat)")
+            let audioFilename = documentsPath.appendingPathComponent("voice_recording_\(Date().timeIntervalSince1970).m4a")
             self.currentRecordingURL = audioFilename
             
             do {
@@ -255,13 +278,13 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
             
             // Validate duration
             let duration = self._recordingDuration
-            guard duration >= Config.VoiceAnalysis.minRecordingDuration else {
+            guard duration >= 1.0 else { // Minimum 1 second
                 self.cleanup()
                 promise(.failure(.invalidDuration))
                 return
             }
             
-            guard duration <= Config.VoiceAnalysis.maxRecordingDuration else {
+            guard duration <= 120.0 else { // Maximum 2 minutes
                 self.cleanup()
                 promise(.failure(.invalidDuration))
                 return
@@ -316,12 +339,12 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
                     
                     try audioFile.read(into: buffer)
                     
-                    // Analyze audio quality
-                    let quality = self.analyzeAudioQuality(buffer: buffer)
+                    // Use enhanced audio quality analysis
+                    let quality = self.analyzeEnhancedAudioQuality(buffer: buffer)
                     
                     DispatchQueue.main.async {
                         if Config.isDebugMode {
-                            print("🎤 Audio quality analysis: \(quality.displayName)")
+                            print("🎤 Enhanced audio quality analysis: \(quality.displayName)")
                         }
                         promise(.success(quality))
                     }
@@ -334,6 +357,62 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
             }
         }
         .eraseToAnyPublisher()
+    }
+    
+    /// Enhanced audio quality analysis using multiple metrics
+    private func analyzeEnhancedAudioQuality(buffer: AVAudioPCMBuffer) -> VoiceQuality {
+        guard let channelData = buffer.floatChannelData?[0] else {
+            return .poor
+        }
+        
+        let frameLength = Int(buffer.frameLength)
+        var rms: Float = 0
+        var peak: Float = 0
+        var zeroCrossings: Int = 0
+        
+        // Calculate RMS, peak, and zero crossings
+        for i in 0..<frameLength {
+            let sample = channelData[i]
+            rms += sample * sample
+            peak = max(peak, abs(sample))
+            
+            if i > 0 {
+                let prevSample = channelData[i-1]
+                if (prevSample >= 0 && sample < 0) || (prevSample < 0 && sample >= 0) {
+                    zeroCrossings += 1
+                }
+            }
+        }
+        
+        rms = sqrt(rms / Float(frameLength))
+        let zeroCrossingRate = Float(zeroCrossings) / Float(frameLength)
+        
+        // Convert to dB
+        let rmsDB = 20 * log10(rms + 1e-10)
+        let peakDB = 20 * log10(peak + 1e-10)
+        
+        // Enhanced quality assessment using multiple metrics
+        var qualityScore = 0
+        
+        // RMS energy assessment
+        if rmsDB > -20 { qualityScore += 3 }
+        else if rmsDB > -30 { qualityScore += 2 }
+        else if rmsDB > -40 { qualityScore += 1 }
+        
+        // Peak amplitude assessment
+        if peakDB > -6 && peakDB < -1 { qualityScore += 2 }
+        else if peakDB > -12 { qualityScore += 1 }
+        
+        // Zero crossing rate assessment (speech vs noise)
+        if zeroCrossingRate > 0.1 && zeroCrossingRate < 0.3 { qualityScore += 1 }
+        
+        // Determine quality based on total score
+        switch qualityScore {
+        case 5...6: return .excellent
+        case 3...4: return .good
+        case 1...2: return .fair
+        default: return .poor
+        }
     }
     
     private func analyzeAudioQuality(buffer: AVAudioPCMBuffer) -> VoiceQuality {
@@ -380,7 +459,7 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
             self._recordingDuration = Date().timeIntervalSince(startTime)
             
             // Auto-stop at max duration
-            if self._recordingDuration >= Config.VoiceAnalysis.maxRecordingDuration {
+            if self._recordingDuration >= 120.0 {
                 self.stopRecording()
                     .sink(
                         receiveCompletion: { _ in },
@@ -475,3 +554,4 @@ extension VoiceRecordingService: AVAudioRecorderDelegate {
         cleanup()
     }
 }
+

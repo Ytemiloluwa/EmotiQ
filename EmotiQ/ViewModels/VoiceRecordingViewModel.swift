@@ -81,7 +81,16 @@ class VoiceRecordingViewModel: ObservableObject {
         
         isLoading = true
         
-        voiceRecordingService.startRecording()
+        // Request permissions first, then start recording
+        voiceRecordingService.requestPermission()
+            .mapError { _ in VoiceRecordingError.permissionDenied }
+            .flatMap { granted -> AnyPublisher<Void, VoiceRecordingError> in
+                if granted {
+                    return self.voiceRecordingService.startRecording()
+                } else {
+                    return Fail(error: VoiceRecordingError.permissionDenied).eraseToAnyPublisher()
+                }
+            }
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
@@ -135,7 +144,7 @@ class VoiceRecordingViewModel: ObservableObject {
             return
         }
         
-        // Check if it is already processing
+        // Check if we're already processing
         guard !isLoading else {
             if Config.isDebugMode {
                 print("⚠️ Analysis already in progress, ignoring duplicate request")
