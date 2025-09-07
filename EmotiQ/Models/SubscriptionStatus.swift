@@ -49,23 +49,22 @@ enum SubscriptionStatus: String, CaseIterable {
         switch self {
         case .free:
             return [
-                "3 daily voice check-ins",
+                "6 weekly voice check-ins",
                 "Basic emotion tracking",
                 "Simple insights"
             ]
         case .premium:
             return [
                 "Unlimited voice check-ins",
+                "Voice cloning",
                 "Advanced emotion analysis",
                 "Personalized coaching",
-                "ElevenLabs voice affirmations",
-                "Detailed emotional insights"
+                "Goal setting & tracking",
+                "Advanced analytics"
             ]
         case .pro:
             return [
                 "Everything in Premium",
-                "Custom voice cloning",
-                "Advanced analytics & trends",
                 "Data export capabilities",
                 "Priority customer support",
                 "Early access to new features"
@@ -82,12 +81,21 @@ enum SubscriptionStatus: String, CaseIterable {
         }
     }
     
+    var weeklyLimit: Int {
+        switch self {
+        case .free:
+            return Config.Subscription.freeWeeklyLimit
+        case .premium, .pro:
+            return -1 // Unlimited
+        }
+    }
+    
     var hasUnlimitedAccess: Bool {
         return self != .free
     }
     
     var hasVoiceCloning: Bool {
-        return self == .pro
+        return self == .premium || self == .pro
     }
     
     var hasAdvancedAnalytics: Bool {
@@ -98,7 +106,19 @@ enum SubscriptionStatus: String, CaseIterable {
         return self == .pro
     }
     
+    var hasGoalSetting: Bool {
+        return self != .free
+    }
+    
+    var hasPersonalizedCoaching: Bool {
+        return self != .free
+    }
+    
     var hasPrioritySupport: Bool {
+        return self == .pro
+    }
+    
+    var hasEarlyAccess: Bool {
         return self == .pro
     }
 }

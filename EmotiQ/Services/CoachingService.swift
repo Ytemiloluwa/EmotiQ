@@ -660,9 +660,47 @@ class CoachingService: ObservableObject {
     }
     
     private func getRecentEmotions() -> [EmotionAnalysisResult] {
-        // This would fetch from Core Data in a real implementation
-        // For now, return empty array
-        return []
+        let context = persistenceController.container.viewContext
+        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        
+        // Get emotions from the last 30 days
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        request.predicate = NSPredicate(format: "timestamp >= %@", thirtyDaysAgo as NSDate)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+        
+        do {
+            let emotionEntities = try context.fetch(request)
+            return emotionEntities
+                .filter { entity in
+                    guard let emotionType = EmotionType(rawValue: entity.primaryEmotion ?? ""),
+                          let timestamp = entity.timestamp else {
+                        return false
+                    }
+                    return true
+                }
+                .map { entity in
+                    let emotionType = EmotionType(rawValue: entity.primaryEmotion ?? "")!
+                    let timestamp = entity.timestamp!
+                    
+                    // Convert to EmotionCategory (since EmotionAnalysisResult uses EmotionCategory)
+                    let emotionCategory = EmotionCategory(rawValue: emotionType.rawValue) ?? .neutral
+                    
+                    return EmotionAnalysisResult(
+                        timestamp: timestamp,
+                        primaryEmotion: emotionCategory,
+                        subEmotion: .contentment, // Default sub-emotion
+                        intensity: .medium, // Default intensity
+                        confidence: entity.confidence,
+                        emotionScores: [emotionCategory: entity.confidence],
+                        subEmotionScores: [:],
+                        audioQuality: .good, // Default quality
+                        sessionDuration: 30.0 // Default duration
+                    )
+                }
+        } catch {
+            print("❌ Failed to fetch recent emotions: \(error)")
+            return []
+        }
     }
     
     private func updateProgressMetrics() {
@@ -707,8 +745,19 @@ class CoachingService: ObservableObject {
     private func calculateGoalAchievementProgress() -> Double {
         guard !userGoals.isEmpty else { return 0.0 }
         
-        let totalProgress = userGoals.map { $0.progress }.reduce(0, +)
-        return totalProgress / Double(userGoals.count)
+        let completedGoals = userGoals.filter { $0.isCompleted }.count
+        let totalGoals = userGoals.count
+        
+        // Calculate based on completed goals and average progress of active goals
+        let completionRate = Double(completedGoals) / Double(totalGoals)
+        let activeGoals = userGoals.filter { !$0.isCompleted }
+        
+        if activeGoals.isEmpty {
+            return completionRate
+        } else {
+            let averageProgress = activeGoals.map { $0.progress }.reduce(0, +) / Double(activeGoals.count)
+            return (completionRate + averageProgress) / 2.0
+        }
     }
 }
 
@@ -748,5 +797,4 @@ extension Notification.Name {
     static let goalCompleted = Notification.Name("goalCompleted")
     static let milestoneCompleted = Notification.Name("milestoneCompleted")
 }
-
 

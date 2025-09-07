@@ -520,6 +520,13 @@ class CoreMLEmotionService: ObservableObject {
         
         do {
             print("🎤 Starting speech-to-text analysis...")
+            
+            // Ensure audio session is properly configured for speech recognition
+            try await configureAudioSessionForSpeechRecognition()
+            
+            // Small delay to ensure audio session is stable
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
             let speechResult = try await speechAnalyzer.analyzeEmotionFromSpeech(audioURL: audioURL)
             speechEmotionScores = speechResult.emotionScores
             speechConfidence = speechResult.confidence
@@ -543,6 +550,11 @@ class CoreMLEmotionService: ObservableObject {
             voiceScores: voiceEmotionScores,
             voiceConfidence: voiceConfidence
         )
+    }
+    
+    /// Configures audio session specifically for speech recognition to prevent conflicts
+    private func configureAudioSessionForSpeechRecognition() async throws {
+        try await AudioSessionManager.shared.configureAudioSession(for: .speechRecognition)
     }
     
     /// Runs emotion inference using CoreML or fallback logic

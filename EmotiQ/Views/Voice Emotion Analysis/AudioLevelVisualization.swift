@@ -10,7 +10,7 @@ import SwiftUI
 struct AudioLevelVisualization: View {
     
     // MARK: - Properties
-    let audioLevel: Float
+    let audioLevels: [Float]
     let isRecording: Bool
     
     // MARK: - Configuration
@@ -20,44 +20,42 @@ struct AudioLevelVisualization: View {
     private let maxBarHeight: CGFloat = 60
     private let animationDuration: Double = 0.1
     
-    // MARK: - State
-    @State private var animatedLevels: [Float] = Array(repeating: 0, count: 20)
-    @State private var lastUpdateTime = Date()
-    
     var body: some View {
         HStack(spacing: barSpacing) {
             ForEach(0..<numberOfBars, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 2)
                     .fill(barGradient(for: index))
                     .frame(width: 4, height: barHeight(for: index))
-                    .animation(.easeInOut(duration: animationDuration), value: animatedLevels[index])
+                    .animation(.easeInOut(duration: animationDuration), value: audioLevels)
             }
         }
         .frame(height: maxBarHeight)
-        .onChange(of: audioLevel) { _, newLevel in
-            updateVisualization(with: newLevel)
-        }
-        .onChange(of: isRecording) { _, recording in
-            if !recording {
-                resetVisualization()
-            }
-        }
-        .onAppear {
-            initializeVisualization()
-        }
     }
+    //}
     
     // MARK: - Private Methods
     
     private func barHeight(for index: Int) -> CGFloat {
-        let level = animatedLevels[index]
+        guard index < audioLevels.count else {
+            return minBarHeight
+        }
+        let level = audioLevels[index]
         let normalizedLevel = CGFloat(level)
         let height = minBarHeight + (maxBarHeight - minBarHeight) * normalizedLevel
-        return max(minBarHeight, height)
+        let finalHeight = max(minBarHeight, height)
+        
+        return finalHeight
     }
     
     private func barGradient(for index: Int) -> LinearGradient {
-        let level = animatedLevels[index]
+        guard index < audioLevels.count else {
+            return LinearGradient(
+                colors: [Color.gray.opacity(0.3), Color.gray.opacity(0.1)],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+        }
+        let level = audioLevels[index]
         let intensity = Double(level)
         
         if !isRecording {
@@ -89,50 +87,6 @@ struct AudioLevelVisualization: View {
             startPoint: .bottom,
             endPoint: .top
         )
-    }
-    
-    private func updateVisualization(with newLevel: Float) {
-        let now = Date()
-        let timeDelta = now.timeIntervalSince(lastUpdateTime)
-        lastUpdateTime = now
-        
-        // Enhanced sensitivity - respond to even small changes
-        let sensitivityMultiplier: Float = 3.0
-        let enhancedLevel = min(newLevel * sensitivityMultiplier, 1.0)
-        
-        // Create frequency-like distribution
-        let centerIndex = numberOfBars / 2
-        let maxDistance = Float(numberOfBars / 2)
-        
-        // Use timeDelta for adaptive smoothing
-        let baseSmoothingFactor: Float = 0.3
-        let adaptiveSmoothing = min(baseSmoothingFactor, Float(timeDelta * 10.0))
-        
-        for i in 0..<numberOfBars {
-            let distance = abs(Float(i - centerIndex))
-            let falloff = 1.0 - (distance / maxDistance)
-            
-            let randomVariation = Float.random(in: 0.8...1.2)
-            let targetLevel = enhancedLevel * falloff * randomVariation
-            
-            // Use adaptive smoothing for natural movement
-            animatedLevels[i] = animatedLevels[i] * (1 - adaptiveSmoothing) + targetLevel * adaptiveSmoothing
-            
-            // Ensure minimum activity when recording
-            if isRecording && enhancedLevel > 0.01 {
-                animatedLevels[i] = max(animatedLevels[i], 0.1)
-            }
-        }
-    }
-    
-    private func resetVisualization() {
-        withAnimation(.easeOut(duration: 0.5)) {
-            animatedLevels = Array(repeating: 0, count: numberOfBars)
-        }
-    }
-    
-    private func initializeVisualization() {
-        animatedLevels = Array(repeating: 0, count: numberOfBars)
     }
 }
 
@@ -251,3 +205,4 @@ struct CircularAudioLevelIndicator: View {
         animatedLevel = animatedLevel * (1 - smoothingFactor) + enhancedLevel * smoothingFactor
     }
 }
+

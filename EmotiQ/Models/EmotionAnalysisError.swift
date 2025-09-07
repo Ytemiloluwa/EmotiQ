@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Foundation
 
 // MARK: - Comprehensive Emotion Analysis Error Types
 /// Centralized error types for all emotion analysis related operations
@@ -123,4 +122,5 @@ enum EmotionAnalysisError: LocalizedError {
             return "Please check your internet connection and try again"
         }
     }
+    
 }

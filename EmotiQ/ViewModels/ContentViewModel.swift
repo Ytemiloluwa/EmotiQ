@@ -51,6 +51,16 @@ class ContentViewModel: BaseViewModel {
         .receive(on: DispatchQueue.main)
         .assign(to: \.canPerformVoiceAnalysis, on: self)
         .store(in: &cancellables)
+        
+        // Monitor daily usage reset notifications
+        NotificationCenter.default.publisher(for: .dailyUsageReset)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Refresh daily usage when reset is detected
+                self?.subscriptionService.refreshDailyUsage()
+                print("🔄 Daily usage reset detected in ContentViewModel")
+            }
+            .store(in: &cancellables)
     }
     
     func loadInitialData() {
@@ -58,6 +68,9 @@ class ContentViewModel: BaseViewModel {
         
         // Ensure user exists in Core Data
         let _ = persistenceController.createUserIfNeeded()
+        
+        // Refresh daily usage to check for daily reset
+        subscriptionService.refreshDailyUsage()
         
         // Check subscription status
         subscriptionService.checkSubscriptionStatus()

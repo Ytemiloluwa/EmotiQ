@@ -217,7 +217,7 @@ class SpeechAnalysisService: ObservableObject {
     }
     
     /// Analyzes emotional keywords and context in the text
-    private func analyzeEmotionalKeywords(text: String) -> [EmotionalKeyword] {
+    func analyzeEmotionalKeywords(text: String) -> [EmotionalKeyword] {
         let lowercaseText = text.lowercased()
         var keywords: [EmotionalKeyword] = []
         

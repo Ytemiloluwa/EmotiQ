@@ -15,13 +15,15 @@ import Combine
 struct MainTabView: View {
     @StateObject private var tabViewModel = TabViewModel()
     @StateObject private var themeManager = ThemeManager()
+    @StateObject private var notificationManager = OneSignalNotificationManager.shared
     @EnvironmentObject private var subscriptionService: SubscriptionService
     @EnvironmentObject private var emotionService: CoreMLEmotionService
+
     
     var body: some View {
         TabView(selection: $tabViewModel.selectedTab) {
             // MARK: - Dashboard Tab
-            DashboardView()
+            DashboardView(tabViewModel: tabViewModel)
                 .tabItem {
                     Image(systemName: tabViewModel.selectedTab == .dashboard ? "brain.head.profile.fill" : "brain.head.profile")
                     Text("Dashboard")
@@ -37,7 +39,9 @@ struct MainTabView: View {
                 .tag(TabItem.voice)
             
             // MARK: - Insights Tab
-            InsightsView()
+                            FeatureGateView(feature: .advancedAnalytics) {
+                    InsightsView()
+                }
                 .tabItem {
                     Image(systemName: tabViewModel.selectedTab == .insights ? "chart.line.uptrend.xyaxis.circle.fill" : "chart.line.uptrend.xyaxis.circle")
                     Text("Insights")
@@ -45,7 +49,9 @@ struct MainTabView: View {
                 .tag(TabItem.insights)
             
             // MARK: - Coaching Tab
-            CoachingView()
+                            FeatureGateView(feature: .personalizedCoaching) {
+                    CoachingView()
+                }
                 .tabItem {
                     Image(systemName: tabViewModel.selectedTab == .coaching ? "person.crop.circle.badge.checkmark.fill" : "person.crop.circle.badge.checkmark")
                     Text("Coaching")
@@ -67,16 +73,62 @@ struct MainTabView: View {
             setupTabBarAppearance()
             tabViewModel.setSubscriptionService(subscriptionService)
         }
+        .onChange(of: tabViewModel.selectedTab) { oldValue, newValue in
+            // Provide haptic feedback when tab bar items are tapped
+            HapticManager.shared.tabSwitch()
+        }
         .sheet(isPresented: $tabViewModel.showingSubscriptionPaywall) {
             SubscriptionPaywallView()
         }
+        .onChange(of: tabViewModel.showingSubscriptionPaywall) { oldValue, newValue in
+            if !newValue {
+                // Sheet was dismissed
+                HapticManager.shared.buttonPress(.subtle)
+            }
+        }
         .alert("Premium Feature", isPresented: $tabViewModel.showingPremiumAlert) {
             Button("Upgrade") {
+                HapticManager.shared.buttonPress(.primary)
                 tabViewModel.showingSubscriptionPaywall = true
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {
+                HapticManager.shared.buttonPress(.subtle)
+            }
         } message: {
             Text("This feature requires a Premium subscription. Upgrade now to unlock unlimited access to EmotiQ's Emotional coaching features.")
+        }
+        .alert("Open Settings", isPresented: $notificationManager.showingNotificationSettingsAlert) {
+            Button("Open Settings") {
+                HapticManager.shared.buttonPress(.primary)
+                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsUrl)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                HapticManager.shared.buttonPress(.subtle)
+            }
+        } message: {
+            Text("You currently have notifications turned off for this application. You can open Settings to re-enable them.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToVoiceAnalysis)) { _ in
+            // Navigate to voice analysis tab
+            tabViewModel.selectedTab = .voice
+            HapticManager.shared.buttonPress(.primary)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToMainApp)) { _ in
+            // Navigate to dashboard tab
+            tabViewModel.selectedTab = .dashboard
+            HapticManager.shared.buttonPress(.primary)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToInsights)) { _ in
+            // Navigate to insights tab
+            tabViewModel.selectedTab = .insights
+            HapticManager.shared.buttonPress(.primary)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("navigateToGoals"))) { _ in
+            // Navigate to coaching tab (where goals are located)
+            tabViewModel.selectedTab = .coaching
+            HapticManager.shared.buttonPress(.primary)
         }
     }
     
@@ -172,6 +224,11 @@ class TabViewModel: ObservableObject {
             return
         }
         
+        // Only trigger haptic if actually changing tabs
+        if selectedTab != tab {
+            HapticManager.shared.tabSwitch()
+        }
+        
         selectedTab = tab
     }
     
@@ -186,19 +243,35 @@ class TabViewModel: ObservableObject {
 
 // MARK: - Dashboard View
 struct DashboardView: View {
+    let tabViewModel: TabViewModel
     @EnvironmentObject private var emotionService: CoreMLEmotionService
     @EnvironmentObject private var themeManager: ThemeManager
     @StateObject private var dashboardViewModel = DashboardViewModel()
+    @State private var showingVoiceGuidedIntervention = false
+    @State private var showingAllPrompts = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     // MARK: - Header
                     DashboardHeaderView()
                     
                     // MARK: - Quick Actions
-                    QuickActionsView()
+                    QuickActionsView(
+                        onVoiceGuidedIntervention: {
+                            showingVoiceGuidedIntervention = true
+                        },
+                        onVoiceCheck: {
+                            tabViewModel.selectedTab = .voice
+                        },
+                        onPrompts: {
+                            showingAllPrompts = true
+                        },
+                        onInsights: {
+                            tabViewModel.selectedTab = .insights
+                        }
+                    )
                     
                     // MARK: - Recent Analysis
                     if let lastResult = emotionService.lastAnalysisResult {
@@ -221,6 +294,12 @@ struct DashboardView: View {
             .background(ThemeColors.backgroundGradient)
             .onAppear {
                 dashboardViewModel.refreshData()
+            }
+            .navigationDestination(isPresented: $showingVoiceGuidedIntervention) {
+                VoiceGuidedInterventionView(intervention: nil)
+            }
+            .navigationDestination(isPresented: $showingAllPrompts) {
+                AllEmotionalPromptsView(viewModel: MicroInterventionsViewModel())
             }
         }
     }
@@ -248,7 +327,9 @@ struct DashboardHeaderView: View {
                 Spacer()
                 
                 // Notification bell
-                Button(action: {}) {
+                Button(action: {
+                    HapticManager.shared.buttonPress(.subtle)
+                }) {
                     Image(systemName: "bell")
                         .font(.title2)
                         .foregroundColor(ThemeColors.accent)
@@ -263,7 +344,7 @@ struct DashboardHeaderView: View {
     private var greetingText: String {
         let hour = Calendar.current.component(.hour, from: currentTime)
         switch hour {
-        case 5..<12: return "Good Morning"
+        case 5..<11: return "Good Morning"
         case 12..<17: return "Good Afternoon"
         case 17..<22: return "Good Evening"
         default: return "Good Evening"
@@ -273,6 +354,10 @@ struct DashboardHeaderView: View {
 
 // MARK: - Quick Actions
 struct QuickActionsView: View {
+    let onVoiceGuidedIntervention: () -> Void
+    let onVoiceCheck: () -> Void
+    let onPrompts: () -> Void
+    let onInsights: () -> Void
     @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
@@ -287,28 +372,28 @@ struct QuickActionsView: View {
                     title: "Voice Check",
                     icon: "waveform.circle.fill",
                     color: ThemeColors.accent,
-                    action: {}
+                    action: onVoiceCheck
                 )
                 
                 QuickActionButton(
                     title: "Breathing",
                     icon: "lungs.fill",
                     color: .blue,
-                    action: {}
+                    action: onVoiceGuidedIntervention
                 )
                 
                 QuickActionButton(
-                    title: "Journal",
+                    title: "Prompts",
                     icon: "book.fill",
                     color: ThemeColors.success,
-                    action: {}
+                    action: onPrompts
                 )
                 
                 QuickActionButton(
                     title: "Insights",
                     icon: "chart.bar.fill",
                     color: ThemeColors.warning,
-                    action: {}
+                    action: onInsights
                 )
             }
         }
@@ -323,7 +408,10 @@ struct QuickActionButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.shared.buttonPress(.standard)
+            action()
+        }) {
             VStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.title2)
@@ -454,41 +542,163 @@ struct SummaryItem: View {
 // MARK: - Emotion Trends Card
 struct EmotionTrendsCard: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("This Week's Trends")
+                Text("Voice check ins in the last 7 days")
                     .font(.headline)
                     .fontWeight(.semibold)
                 
                 Spacer()
                 
-                Button("View All") {}
+                Button("View All") {
+                    HapticManager.shared.buttonPress(.subtle)
+                    // Navigate to InsightsView
+                    NotificationCenter.default.post(name: .navigateToInsights, object: nil)
+                }
                     .font(.caption)
                     .foregroundColor(.purple)
             }
             
-            HStack(spacing: 8) {
-                ForEach(Array(viewModel.weeklyTrendData.enumerated()), id: \.offset) { index, data in
-                    VStack {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(data.emotion.color.opacity(0.7))
-                            .frame(width: 8, height: CGFloat(data.intensity * 60))
-                        
-                        Text("\(index + 1)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
+
+            // Line Chart with fallback
+            if viewModel.weeklyTrendData.isEmpty {
+                Text("Loading chart data...")
+                    .foregroundColor(.secondary)
+                    .frame(height: 140)
+            } else {
+                EmotionLineChart(data: viewModel.weeklyTrendData)
+                    .frame(height: 140)
             }
-            .frame(maxWidth: .infinity)
         }
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.regularMaterial)
         )
+    }
+    
+    func formatDate(_ date: Date) -> String {
+        
+        let dateformatter = DateFormatter()
+        
+        dateformatter.dateFormat = "MMM d"
+        
+        return dateformatter.string(from: date)
+    }
+}
+
+struct EmotionLineChart: View {
+    let data: [EmotionTrendData]
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            // Y-axis labels
+            VStack(alignment: .trailing, spacing: 0) {
+                ForEach((0...5).reversed(), id: \.self) { i in
+                    Text("\(i * 2)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(height: 16.67) // 100 height / 6 labels = 16.67 each
+                }
+            }
+            .frame(width: 20)
+            
+            VStack(spacing: 8) {
+                // Chart area
+                GeometryReader { geometry in
+                    ZStack {
+                        // Grid lines
+                        VStack(spacing: 0) {
+                            ForEach(0..<6) { i in
+                                Divider()
+                                    .opacity(0.9)
+                                if i < 5 {
+                                    Spacer()
+                                }
+                            }
+                        }
+                        .offset(y: -1) // Align grid lines with Y-axis labels
+                        
+                        
+                        // Chart lines
+                        Path { path in
+                            guard !data.isEmpty else { return }
+                            
+                            let width = geometry.size.width
+                            let height = geometry.size.height
+                            let stepX = width / CGFloat(max(data.count - 1, 1))
+                            
+                            // Primary emotion line (blue)
+                            let primaryPoints = data.enumerated().map { index, item in
+                                CGPoint(
+                                    x: CGFloat(index) * stepX,
+                                    y: height - (CGFloat(item.primaryEmotionCount) / 10.0) * height
+                                )
+                            }
+                            
+                            path.move(to: primaryPoints[0])
+                            for point in primaryPoints.dropFirst() {
+                                path.addLine(to: point)
+                            }
+                        }
+                        .stroke(Color.blue, lineWidth: 2)
+                        
+                        
+                        // Data points
+                        ForEach(Array(data.enumerated()), id: \.offset) { index, item in
+                            let width = geometry.size.width
+                            let height = geometry.size.height
+                            let stepX = width / CGFloat(max(data.count - 1, 1))
+                            
+                            // Primary emotion points (circles)
+                            Circle()
+                                .fill(Color.blue)
+                                .frame(width: 6, height: 6)
+                                .position(
+                                    x: CGFloat(index) * stepX,
+                                    y: height - (CGFloat(item.primaryEmotionCount) / 10.0) * height
+                                )
+                        
+                        }
+                    }
+                }
+                .frame(height: 100)
+                
+                // X-axis labels (dates)
+                HStack {
+                    ForEach(Array(data.enumerated()), id: \.offset) { index, item in
+                        Text(formatDate(item.date))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        
+                        if index < data.count - 1 {
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
+    }
+}
+
+struct Diamond: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -509,6 +719,8 @@ class DashboardViewModel: ObservableObject {
     }
     
     func refreshData() {
+        // Refresh daily usage to check for daily reset
+        SubscriptionService.shared.refreshDailyUsage()
         loadTodayData()
     }
     
@@ -523,11 +735,41 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func loadTodayData() {
+        print("🔍 DEBUG: loadTodayData() started")
+        
+        // Monitor memory usage
+        let memoryUsage = getMemoryUsage()
+        print("🔍 DEBUG: Memory usage before loading: \(memoryUsage) MB")
+        
         // Load real data from Core Data
         loadTodayCheckIns()
         loadCurrentStreak()
         loadAverageMood()
         loadWeeklyTrendData()
+        
+        let memoryUsageAfter = getMemoryUsage()
+        print("🔍 DEBUG: Memory usage after loading: \(memoryUsageAfter) MB")
+        print("🔍 DEBUG: Memory increase: \(memoryUsageAfter - memoryUsage) MB")
+    }
+    
+    private func getMemoryUsage() -> Double {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
+        
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_,
+                         task_flavor_t(MACH_TASK_BASIC_INFO),
+                         $0,
+                         &count)
+            }
+        }
+        
+        if kerr == KERN_SUCCESS {
+            return Double(info.resident_size) / 1024.0 / 1024.0 // Convert to MB
+        } else {
+            return 0.0
+        }
     }
     
     private func loadTodayCheckIns() {
@@ -591,39 +833,140 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func loadWeeklyTrendData() {
-        guard let user = persistenceController.getCurrentUser() else { return }
+        print("🔍 DEBUG: loadWeeklyTrendData() started")
+        
+        guard let user = persistenceController.getCurrentUser() else {
+            print("❌ DEBUG: No current user found")
+            return
+        }
         
         let calendar = Calendar.current
         let today = Date()
+        print("🔍 DEBUG: Today's date: \(today)")
         
-        weeklyTrendData = (0..<7).compactMap { dayOffset in
-            guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { return nil }
+        // Find the first recording date
+        let firstRecordingRequest: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        firstRecordingRequest.predicate = NSPredicate(format: "user == %@", user)
+        firstRecordingRequest.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: true)]
+        firstRecordingRequest.fetchLimit = 1
+        
+        print("🔍 DEBUG: Fetching first recording date...")
+        
+        do {
+            let firstRecordings = try persistenceController.container.viewContext.fetch(firstRecordingRequest)
+            print("🔍 DEBUG: Found \(firstRecordings.count) first recordings")
             
-            let dayStart = calendar.startOfDay(for: date)
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? date
-            
-            let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-            request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@ AND timestamp < %@", user, dayStart as NSDate, dayEnd as NSDate)
-            request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
-            request.fetchLimit = 1
-            
-            do {
-                let results = try persistenceController.container.viewContext.fetch(request)
-                if let lastData = results.first,
-                   let emotionString = lastData.primaryEmotion,
-                   let emotion = EmotionCategory(rawValue: emotionString) {
-                    return EmotionTrendData(
-                        date: date,
-                        emotion: emotion,
-                        intensity: lastData.intensity
-                    )
+            if let firstRecording = firstRecordings.first, let firstDate = firstRecording.timestamp {
+                print("🔍 DEBUG: First recording date: \(firstDate)")
+                
+                // Start from the first recording date
+                let startDate = calendar.startOfDay(for: firstDate)
+                let daysSinceFirst = calendar.dateComponents([.day], from: startDate, to: today).day ?? 0
+                let daysToShow = min(max(daysSinceFirst + 1, 7), 30) // Show at least 7 days, max 30
+                
+                print("🔍 DEBUG: Days since first: \(daysSinceFirst), Days to show: \(daysToShow)")
+                
+                // Limit to prevent memory issues
+                let safeDaysToShow = min(daysToShow, 14) // Cap at 14 days for safety
+                print("🔍 DEBUG: Safe days to show: \(safeDaysToShow)")
+                
+                weeklyTrendData = (0..<safeDaysToShow).map { dayOffset in
+                    print("🔍 DEBUG: Processing day \(dayOffset + 1)/\(safeDaysToShow)")
+                    
+                    guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else {
+                        print("❌ DEBUG: Failed to calculate date for day \(dayOffset)")
+                        return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+                    }
+                    
+                    let dayStart = calendar.startOfDay(for: date)
+                    let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? date
+                    
+                    print("🔍 DEBUG: Day \(dayOffset + 1): Querying from \(dayStart) to \(dayEnd)")
+                    
+                    let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+                    request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@ AND timestamp < %@", user, dayStart as NSDate, dayEnd as NSDate)
+                    
+                    // Add fetch limit to prevent memory issues
+                    request.fetchLimit = 100
+                    
+                    do {
+                        let results = try persistenceController.container.viewContext.fetch(request)
+                        print("🔍 DEBUG: Day \(dayOffset + 1): Found \(results.count) recordings")
+                        
+                        // Debug individual recordings
+                        for (index, entity) in results.enumerated() {
+                            print("🔍 DEBUG: Recording \(index + 1): timestamp=\(entity.timestamp ?? Date()), emotion=\(entity.primaryEmotion ?? "nil"), confidence=\(entity.confidence)")
+                        }
+                        
+                        // Calculate emotion counts for the chart
+                        let emotions = results.compactMap { entity -> EmotionCategory? in
+                            guard let emotionString = entity.primaryEmotion else { return nil }
+                            return EmotionCategory(rawValue: emotionString)
+                        }
+                        
+                        let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
+                            counts[emotion, default: 0] += 1
+                        }
+                        
+                        // Get primary and secondary emotion counts
+                        let sortedEmotions = emotionCounts.sorted { $0.value > $1.value }
+                        let primaryCount = sortedEmotions.first?.value ?? 0
+                        let secondaryCount = sortedEmotions.count > 1 ? sortedEmotions[1].value : 0
+                        
+                        print("🔍 DEBUG: Day \(dayOffset + 1): Primary=\(primaryCount), Secondary=\(secondaryCount)")
+                        
+                        let trendData = EmotionTrendData(
+                            date: date,
+                            checkInCount: results.count,
+                            hasData: !results.isEmpty,
+                            primaryEmotionCount: primaryCount,
+                            secondaryEmotionCount: secondaryCount
+                        )
+                        
+                        print("🔍 DEBUG: Created trend data: date=\(date), checkInCount=\(trendData.checkInCount), primary=\(trendData.primaryEmotionCount), secondary=\(trendData.secondaryEmotionCount)")
+                        
+                        return trendData
+                    } catch {
+                        print("❌ DEBUG: Failed to fetch trend data for day \(dayOffset): \(error)")
+                        return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+                    }
                 }
-            } catch {
-                print("❌ Failed to fetch trend data for day \(dayOffset): \(error)")
+                
+                print("🔍 DEBUG: Successfully loaded \(weeklyTrendData.count) days of trend data")
+                
+                // Debug final data
+                for (index, data) in weeklyTrendData.enumerated() {
+                    print("🔍 DEBUG: Final data \(index + 1): \(formatDate(data.date)) - Count: \(data.checkInCount), Primary: \(data.primaryEmotionCount), Secondary: \(data.secondaryEmotionCount)")
+                }
+                
+                func formatDate(_ date: Date) -> String {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "MMM d"
+                    return formatter.string(from: date)
+                }
+                
+            } else {
+                print("🔍 DEBUG: No first recording found, showing empty chart")
+                // No data yet, show empty chart for last 7 days
+                weeklyTrendData = (0..<7).map { dayOffset in
+                    guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+                        return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+                    }
+                    return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+                }.reversed()
             }
-            
-            return nil
-        }.reversed()
+        } catch {
+            print("❌ DEBUG: Failed to fetch first recording date: \(error)")
+            // Fallback to last 7 days
+            weeklyTrendData = (0..<7).map { dayOffset in
+                guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+                    return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+                }
+                return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+            }.reversed()
+        }
+        
+        print("🔍 DEBUG: loadWeeklyTrendData() completed with \(weeklyTrendData.count) data points")
     }
     
     private func calculateCurrentStreak(from emotionalData: [EmotionalDataEntity]) -> Int {
@@ -665,5 +1008,6 @@ struct MainTabView_Previews: PreviewProvider {
         MainTabView()
             .environmentObject(SubscriptionService())
             .environmentObject(CoreMLEmotionService())
+            .environmentObject(HapticManager.shared)
     }
 }

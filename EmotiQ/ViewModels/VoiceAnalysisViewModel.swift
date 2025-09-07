@@ -19,16 +19,19 @@ class VoiceAnalysisViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var recordingDuration: TimeInterval = 0
     @Published var audioLevel: Float = 0
+    @Published var audioLevelsArray: [Float] = Array(repeating: 0.0, count: 20)
     @Published var analysisResult: EmotionAnalysisResult?
     @Published var showingLimitAlert = false
     @Published var showingErrorAlert = false
     @Published var errorMessage = ""
     @Published var dailyUsageCount = 0
+    @Published var weeklyUsageCount = 0
     @Published var canRecord = true
     @Published var showingAnalysisResult = false
     
     // MARK: - Constants
-    let dailyUsageLimit = 3 // Free tier limit
+    let dailyUsageLimit = 6 // Free tier limit (legacy)
+    let weeklyUsageLimit = 6 // Free tier limit (new)
     private let maxRecordingDuration: TimeInterval = 120 // 2 minutes
     
     // MARK: - Services
@@ -46,16 +49,78 @@ class VoiceAnalysisViewModel: ObservableObject {
     init() {
         setupSubscriptions()
         checkDailyUsage()
-        print("🎯 VoiceAnalysisViewModel initialized")
     }
+    
+    // Test function - add to VoiceAnalysisViewModel
+    func testEmotionCampaign() {
+        let testResult = EmotionAnalysisResult(
+            primaryEmotion: .anger, // Test with anger for immediate trigger
+            subEmotion: .confusion, // Default sub-emotion
+            intensity: .high,
+            confidence: 0.95, // High confidence to trigger campaign
+            emotionScores: [.anger: 0.95, .sadness: 0.02, .fear: 0.01, .joy: 0.01, .surprise: 0.01],
+            subEmotionScores: [SubEmotion.apprehension: 0.95, SubEmotion.distaste: 0.03, SubEmotion.disappointment: 0.02],
+            audioQuality: .good,
+            sessionDuration: 5.0,
+            audioFeatures: nil
+        )
+        
+        // Post notification to trigger campaign
+        NotificationCenter.default.post(
+            name: .emotionalDataSaved,
+            object: testResult
+        )
+        
+        print("🧪 Test emotion campaign triggered for anger")
+    }
+    
+    // Test predictive intervention
+    func testPredictiveCampaign() async {
+        let predictions = await EmotionalInterventionPredictor().predictFutureEmotionalNeeds(
+            currentEmotion: .neutral,
+            confidence: 0.8,
+            timeOfDay: Calendar.current.component(.hour, from: Date()),
+            dayOfWeek: Calendar.current.component(.weekday, from: Date())
+        )
+        
+        print("🔮 Generated \(predictions.count) predictions")
+        
+        // This should schedule notifications for predicted emotional needs
+    }
+    
+    // Test achievement celebration
+    func testAchievementCampaign() {
+        let testAchievement = Achievement(
+            id: "test_achievement",
+            title: "First Voice Analysis",
+            description: "You completed your first emotional voice analysis!",
+            type: .milestone
+        )
+        
+        NotificationCenter.default.post(
+            name: .achievementUnlocked,
+            object: testAchievement
+        )
+        
+        print("🎉 Test achievement campaign triggered")
+    }
+    
+    // Removed test method that was causing duplicate notifications
+    
+
+
     
     // MARK: - Public Methods
     
     /// Starts voice recording with real-time monitoring
     func startRecording() async {
         print("🎤 Starting voice recording...")
+        print("🔍 DEBUG: canRecord = \(canRecord)")
+        print("🔍 DEBUG: Current daily usage = \(dailyUsageCount)")
+        print("🔍 DEBUG: Daily limit = \(dailyUsageLimit)")
         
         guard canRecord else {
+            print("❌ DEBUG: Recording blocked - daily limit reached")
             showingLimitAlert = true
             return
         }
@@ -68,14 +133,16 @@ class VoiceAnalysisViewModel: ObservableObject {
             isRecording = true
             recordingDuration = 0
             audioLevel = 0
-            
-            // Start recording timer
-            startRecordingTimer()
+        
+        // Start recording timer
+        startRecordingTimer()
             
             print("✅ Recording started successfully")
             
         } catch {
             print("❌ Failed to start recording: \(error)")
+            print("🔍 DEBUG: Error type: \(type(of: error))")
+            print("🔍 DEBUG: Error description: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             showingErrorAlert = true
         }
@@ -143,11 +210,23 @@ class VoiceAnalysisViewModel: ObservableObject {
         print("✅ Recording cancelled")
     }
     
-    /// Refreshes daily usage count
+    /// Refreshes daily and weekly usage count
     func checkDailyUsage() {
+        print("🔍 DEBUG: checkDailyUsage() called")
+        
+        // First refresh the subscription service to check for daily and weekly reset
+        print("🔍 DEBUG: Refreshing subscription service daily usage...")
+        subscriptionService.refreshDailyUsage()
+        print("🔍 DEBUG: Refreshing subscription service weekly usage...")
+        subscriptionService.refreshWeeklyUsage()
+        
+        // Then update our local state
         dailyUsageCount = subscriptionService.dailyUsage
+        weeklyUsageCount = subscriptionService.weeklyUsage
+        print("🔍 DEBUG: Updated local state - dailyUsageCount: \(dailyUsageCount), weeklyUsageCount: \(weeklyUsageCount)")
         updateCanRecord()
         print("📊 Current daily usage: \(dailyUsageCount)/\(dailyUsageLimit)")
+        print("📊 Current weekly usage: \(weeklyUsageCount)/\(weeklyUsageLimit)")
     }
     
     // MARK: - Private Methods
@@ -158,6 +237,14 @@ class VoiceAnalysisViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] level in
                 self?.audioLevel = level
+            }
+            .store(in: &cancellables)
+        
+        // Monitor audio levels array for animated bars
+        audioProcessingService.audioLevelsArrayPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] levels in
+                self?.audioLevelsArray = levels
             }
             .store(in: &cancellables)
         
@@ -178,14 +265,58 @@ class VoiceAnalysisViewModel: ObservableObject {
                 print("📊 Daily usage updated: \(newCount)")
             }
             .store(in: &cancellables)
+        
+        // Monitor weekly usage changes from subscription service
+        subscriptionService.$weeklyUsage
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newCount in
+                self?.weeklyUsageCount = newCount
+                self?.updateCanRecord()
+                print("📊 Weekly usage updated: \(newCount)")
+            }
+            .store(in: &cancellables)
+        
+        // Monitor daily usage reset notifications
+        NotificationCenter.default.publisher(for: .dailyUsageReset)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.checkDailyUsage()
+                print("🔄 Daily usage reset detected - refreshing UI")
+                
+                // CRITICAL FIX: Reset audio session state after daily usage reset
+                // This prevents the "Failed to record audio" error that occurs
+                // when the audio session gets corrupted during daily reset
+                Task {
+                    await self?.resetAudioSessionAfterDailyReset()
+                }
+            }
+            .store(in: &cancellables)
+        
+        // Monitor weekly usage reset notifications
+        NotificationCenter.default.publisher(for: .weeklyUsageReset)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.checkDailyUsage()
+                print("🔄 Weekly usage reset detected - refreshing UI")
+                
+                // CRITICAL FIX: Reset audio session state after weekly usage reset
+                // This prevents the "Failed to record audio" error that occurs
+                // when the audio session gets corrupted during weekly reset
+                Task {
+                    await self?.resetAudioSessionAfterDailyReset()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     private func updateCanRecord() {
         let hasSubscription = subscriptionService.hasActiveSubscription
-        let withinLimit = dailyUsageCount < dailyUsageLimit
-        canRecord = hasSubscription || withinLimit
+        let withinWeeklyLimit = weeklyUsageCount < weeklyUsageLimit
+        canRecord = hasSubscription || withinWeeklyLimit
         
-        print("🎯 Can record: \(canRecord) (subscription: \(hasSubscription), usage: \(dailyUsageCount)/\(dailyUsageLimit))")
+        print("🎯 Can record: \(canRecord) (subscription: \(hasSubscription), weekly usage: \(weeklyUsageCount)/\(weeklyUsageLimit))")
+        print("🔍 DEBUG: updateCanRecord() - hasSubscription: \(hasSubscription), withinWeeklyLimit: \(withinWeeklyLimit)")
+        print("🔍 DEBUG: updateCanRecord() - weeklyUsageCount: \(weeklyUsageCount), weeklyUsageLimit: \(weeklyUsageLimit)")
     }
     
     private func updateDailyUsage() async {
@@ -194,9 +325,35 @@ class VoiceAnalysisViewModel: ObservableObject {
         
         // Force immediate UI update
         dailyUsageCount = subscriptionService.dailyUsage
+        weeklyUsageCount = subscriptionService.weeklyUsage
         updateCanRecord()
         
         print("📈 Daily usage incremented to: \(dailyUsageCount)")
+        print("📈 Weekly usage incremented to: \(weeklyUsageCount)")
+    }
+    
+    /// Resets audio session state after daily usage reset to prevent recording errors
+    private func resetAudioSessionAfterDailyReset() async {
+        print("🔧 Resetting audio session state after daily usage reset...")
+        
+        do {
+            // Deactivate current audio session to clear any corrupted state
+            try await AudioSessionManager.shared.deactivateAudioSession()
+            print("✅ Audio session deactivated successfully")
+            
+            // Small delay to ensure clean state
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
+            // Reconfigure audio session for recording
+            try await AudioSessionManager.shared.configureAudioSession(for: .recording)
+            print("✅ Audio session reconfigured for recording")
+            
+            print("🔧 Audio session reset completed successfully")
+            
+        } catch {
+            print("❌ Failed to reset audio session: \(error)")
+            print("🔍 DEBUG: Audio session reset error type: \(type(of: error))")
+        }
     }
     
     private func saveEmotionalData(_ result: EmotionAnalysisResult) async {
@@ -337,6 +494,7 @@ extension VoiceAnalysisViewModel {
     
     /// Gets audio level for visualization (0-1 range)
     func getNormalizedAudioLevel() -> Float {
-        return min(max(audioLevel, 0), 1)
+        let normalized = min(max(audioLevel, 0), 1)
+        return normalized
     }
 }

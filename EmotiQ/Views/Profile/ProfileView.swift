@@ -2,7 +2,7 @@
 //  ProfileView.swift
 //  EmotiQ
 //
-//  Created by Temiloluwa on 13-08-2025.
+//  Created by Temiloluwa on 11-08-2025.
 //
 
 import SwiftUI
@@ -23,34 +23,26 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Background gradient
-                LinearGradient(
-                    colors: [Color.purple.opacity(0.05), Color.cyan.opacity(0.05)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // Background using ThemeColors
+                ThemeColors.backgroundGradient
+                    .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: 20) {
-                        // MARK: - Profile Header
-                        ProfileHeaderSection(viewModel: viewModel)
+                    VStack(spacing: 24) {
+                        // MARK: - Compact Profile Header
+                        CompactProfileHeader(viewModel: viewModel)
                         
-                        // MARK: - Subscription Status
-                        SubscriptionStatusSection(
-                            subscriptionService: subscriptionService,
-                            upgradeAction: { showingSubscriptionPaywall = true }
-                        )
-                        
-                        // MARK: - Quick Stats
-                        QuickStatsSection(viewModel: viewModel)
+                        // MARK: - Horizontal Journey Metrics
+                        HorizontalMetricsSection(viewModel: viewModel)
                         
                         // MARK: - Settings Sections
-                        SettingsSectionsView(viewModel: viewModel)
+                        SettingsListView(viewModel: viewModel, subscriptionService: subscriptionService) {
+                            showingSubscriptionPaywall = true
+                        }
                         
                         Spacer(minLength: 100) // Tab bar spacing
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 20)
                 }
             }
             .navigationTitle("Profile")
@@ -78,76 +70,73 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - Profile Header Section
-struct ProfileHeaderSection: View {
+// MARK: - Compact Profile Header
+struct CompactProfileHeader: View {
     @ObservedObject var viewModel: ProfileViewModel
     
     var body: some View {
-        VStack(spacing: 16) {
-            // Profile avatar
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.purple.opacity(0.3), .cyan.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+        Button(action: {
+            HapticManager.shared.selection()
+            viewModel.showingImagePicker = true
+        }) {
+            HStack(spacing: 16) {
+                // Compact avatar
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.purple.opacity(0.3), .cyan.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .frame(width: 100, height: 100)
-                
-                if let profileImage = viewModel.profileImage {
-                    Image(uiImage: profileImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
-                } else {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.purple)
-                }
-                
-                // Edit button
-                Button(action: {
-                    viewModel.showingImagePicker = true
-                }) {
+                        .frame(width: 60, height: 60)
+                    
+                    if let profileImage = viewModel.profileImage {
+                        Image(uiImage: profileImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 60)
+                            .clipShape(Circle())
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.purple)
+                    }
+                    
+                    // Edit button overlay
                     Image(systemName: "camera.fill")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.white)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 16, height: 16)
                         .background(Color.purple)
                         .clipShape(Circle())
+                        .offset(x: 20, y: 20)
                 }
-                .offset(x: 35, y: 35)
-            }
-            
-            VStack(spacing: 4) {
-                Text(viewModel.displayName)
-                    .font(.title2)
-                    .fontWeight(.semibold)
                 
-                Text("Member since \(viewModel.memberSince)")
-                    .font(.caption)
+                // Profile info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.displayName)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
+                    Text("Joined \(viewModel.memberSince)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
                     .foregroundColor(.secondary)
+                    .font(.caption)
             }
-            
-            // Streak badge
-            HStack {
-                Image(systemName: "flame.fill")
-                    .foregroundColor(.orange)
-                Text("\(viewModel.currentStreak) day streak")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(.regularMaterial)
-            )
+            .padding()
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
-        .padding()
+        .buttonStyle(PlainButtonStyle())
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.regularMaterial)
@@ -158,101 +147,8 @@ struct ProfileHeaderSection: View {
     }
 }
 
-// MARK: - Subscription Status Section
-struct SubscriptionStatusSection: View {
-    let subscriptionService: SubscriptionService
-    let upgradeAction: () -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Subscription")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                if subscriptionService.hasActiveSubscription {
-                    Text("Active")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(.green.opacity(0.2))
-                        )
-                }
-            }
-            
-            if subscriptionService.hasActiveSubscription {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "crown.fill")
-                            .foregroundColor(.purple)
-                        
-                        Text(subscriptionService.currentSubscriptionTier?.displayName ?? "Premium")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        
-                        Spacer()
-                    }
-                    
-                    if let expiryDate = subscriptionService.subscriptionExpiryDate {
-                        Text("Renews on \(expiryDate, style: .date)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Button("Manage Subscription") {
-                        // Open subscription management
-                    }
-                    .font(.caption)
-                    .foregroundColor(.purple)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Free Plan")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Text("Upgrade to unlock unlimited voice analyses and Emotional coaching")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Button(action: upgradeAction) {
-                        HStack {
-                            Image(systemName: "crown.fill")
-                            Text("Upgrade to Premium")
-                        }
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            LinearGradient(
-                                colors: [.purple, .cyan],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.regularMaterial)
-        )
-    }
-}
-
-// MARK: - Quick Stats Section
-struct QuickStatsSection: View {
+// MARK: - Horizontal Metrics Section
+struct HorizontalMetricsSection: View {
     @ObservedObject var viewModel: ProfileViewModel
     
     var body: some View {
@@ -260,16 +156,17 @@ struct QuickStatsSection: View {
             Text("Your Journey")
                 .font(.headline)
                 .fontWeight(.semibold)
+                .foregroundColor(.primary)
             
-            HStack(spacing: 15) {
-                StatCard(
+            HStack(spacing: 12) {
+                CompactStatCard(
                     title: "Check-ins",
                     value: "\(viewModel.totalCheckIns)",
                     icon: "checkmark.circle.fill",
                     color: .green
                 )
                 
-                StatCard(
+                CompactStatCard(
                     title: "Insights",
                     value: "\(viewModel.totalInsights)",
                     icon: "lightbulb.fill",
@@ -277,9 +174,10 @@ struct QuickStatsSection: View {
                 )
                 
                 Button(action: {
+                    HapticManager.shared.selection()
                     viewModel.showingCompletedGoals = true
                 }) {
-                    StatCard(
+                    CompactStatCard(
                         title: "Goals",
                         value: "\(viewModel.completedGoals)",
                         icon: "target",
@@ -292,7 +190,7 @@ struct QuickStatsSection: View {
     }
 }
 
-struct StatCard: View {
+struct CompactStatCard: View {
     let title: String
     let value: String
     let icon: String
@@ -307,13 +205,15 @@ struct StatCard: View {
             Text(value)
                 .font(.title2)
                 .fontWeight(.bold)
+                .foregroundColor(.primary)
             
             Text(title)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding()
+        .padding(.vertical, 16)
+        .padding(.horizontal, 12)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(.regularMaterial)
@@ -321,77 +221,72 @@ struct StatCard: View {
     }
 }
 
-// MARK: - Settings Sections View
-struct SettingsSectionsView: View {
+// MARK: - Settings List View
+struct SettingsListView: View {
     @ObservedObject var viewModel: ProfileViewModel
+    let subscriptionService: SubscriptionService
+    let upgradeAction: () -> Void
     
     var body: some View {
-        VStack(spacing: 16) {
-            // Account & Privacy
-            SettingsSection(title: "Account & Privacy") {
-                SettingsRow(
-                    icon: "person.circle",
-                    title: "Edit Profile",
-                    action: { viewModel.showingEditProfile = true }
-                )
-                
-                SettingsRow(
-                    icon: "faceid",
-                    title: "Face ID",
-                    subtitle: viewModel.faceIDEnabled ? "Enabled" : "Disabled",
-                    action: { viewModel.toggleFaceID() }
-                )
-                
-                SettingsRow(
-                    icon: "lock.shield",
-                    title: "Privacy Settings",
-                    action: { viewModel.showingAccountPrivacy = true }
-                )
-            }
+        VStack(spacing: 0) {
+            // Subscription Row
+            FullWidthSettingsRow(
+                icon: subscriptionService.hasActiveSubscription ? "crown.fill" : "crown",
+                title: subscriptionService.hasActiveSubscription ? "Active Subscription" : "Free Plan",
+                subtitle: subscriptionService.hasActiveSubscription ?
+                    (subscriptionService.currentSubscriptionTier?.displayName ?? "Premium") :
+                    "Upgrade to unlock premium features",
+                action: upgradeAction
+            )
             
-            // App Settings
-            SettingsSection(title: "App Settings") {
-                SettingsRow(
-                    icon: "bell",
-                    title: "Notifications",
-                    action: { viewModel.showingAppSettings = true }
-                )
-                
-                SettingsRow(
-                    icon: "moon",
-                    title: "Dark Mode",
-                    darkModeEnabled: viewModel.darkModeEnabled,
-                    action: { viewModel.toggleDarkMode() }
-                )
-                
-                SettingsRow(
-                    icon: "gear",
-                    title: "App Settings",
-                    action: { viewModel.showingAppSettings = true }
-                )
-            }
+            // Edit Profile
+            FullWidthSettingsRow(
+                icon: "person.circle",
+                title: "Edit Profile",
+                action: { viewModel.showingEditProfile = true }
+            )
             
-            // Support & Info
-            SettingsSection(title: "Support & Info") {
-                SettingsRow(
-                    icon: "questionmark.circle",
-                    title: "Help & Support",
-                    action: { viewModel.showingSupportInfo = true }
-                )
-                
-                SettingsRow(
-                    icon: "doc.text",
-                    title: "Privacy Policy",
-                    action: { viewModel.openPrivacyPolicy() }
-                )
-                
-                SettingsRow(
-                    icon: "star",
-                    title: "Rate EmotiQ",
-                    action: { viewModel.requestAppReview() }
-                )
-            }
+            // Privacy Settings
+            FullWidthSettingsRow(
+                icon: "lock.shield",
+                title: "Privacy Settings",
+                action: { viewModel.showingAccountPrivacy = true }
+            )
+            
+            // Notifications
+            FullWidthSettingsRow(
+                icon: "bell",
+                title: "Notifications",
+                action: { viewModel.showingAppSettings = true }
+            )
+            
+            // Dark Mode
+            FullWidthSettingsRow(
+                icon: "moon",
+                title: "Dark Mode",
+                subtitle: viewModel.darkModeEnabled ? "On" : "Off",
+                action: { viewModel.toggleDarkMode() }
+            )
+            
+            // Help & Support
+            FullWidthSettingsRow(
+                icon: "questionmark.circle",
+                title: "Help & Support",
+                action: { viewModel.showingSupportInfo = true }
+            )
+            
+            // Privacy Policy
+            FullWidthSettingsRow(
+                icon: "doc.text",
+                title: "Privacy Policy",
+                action: { viewModel.openPrivacyPolicy() }
+            )
+            
         }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.regularMaterial)
+        )
         .sheet(isPresented: $viewModel.showingEditProfile) {
             EditProfileView(viewModel: viewModel)
         }
@@ -406,35 +301,10 @@ struct SettingsSectionsView: View {
     }
 }
 
-// MARK: - Settings Section
-struct SettingsSection<Content: View>: View {
-    let title: String
-    let content: Content
-    
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            VStack(spacing: 1) {
-                content
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.regularMaterial)
-            )
-        }
-    }
-}
 
-// MARK: - Settings Row
-struct SettingsRow: View {
+
+// MARK: - Full Width Settings Row
+struct FullWidthSettingsRow: View {
     let icon: String
     let title: String
     let subtitle: String?
@@ -447,16 +317,11 @@ struct SettingsRow: View {
         self.action = action
     }
     
-    // Reactive subtitle for dark mode
-    init(icon: String, title: String, darkModeEnabled: Bool, action: @escaping () -> Void) {
-        self.icon = icon
-        self.title = title
-        self.subtitle = darkModeEnabled ? "On" : "Off"
-        self.action = action
-    }
-    
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.shared.selection()
+            action()
+        }) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .foregroundColor(.purple)
@@ -480,9 +345,17 @@ struct SettingsRow: View {
                     .foregroundColor(.secondary)
                     .font(.caption)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .background(
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+        )
     }
 }
 
@@ -548,7 +421,7 @@ class ProfileViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-        func toggleFaceID() {
+    func toggleFaceID() {
         Task {
             do {
                 let securityManager = SecurityManager.shared
@@ -582,14 +455,18 @@ class ProfileViewModel: ObservableObject {
     }
     
     func openSupport() {
-        if let url = URL(string: "mailto:support@emotiq.app") {
+        if let url = URL(string: "mailto:emotiqapp@gmail.com") {
             UIApplication.shared.open(url)
         }
     }
     
     func openPrivacyPolicy() {
-        if let url = URL(string: "https://emotiq.app/privacy") {
+        
+        if let url = URL(string: "https://ytemiloluwa.github.io/privacy-policy.html") {
             UIApplication.shared.open(url)
+        }
+        if Config.isDebugMode {
+            print("🔒 Opening privacy policy")
         }
     }
     
@@ -952,8 +829,6 @@ struct EditProfileView: View {
     }
 }
 
-
-
 // MARK: - Array Extension
 extension Array where Element: Hashable {
     func mostFrequent() -> Element? {
@@ -964,8 +839,6 @@ extension Array where Element: Hashable {
     }
 }
 
-
-
 // MARK: - Preview
 struct ProfileView_Previews: PreviewProvider {
     static var previews: some View {
@@ -974,3 +847,4 @@ struct ProfileView_Previews: PreviewProvider {
             .environmentObject(ThemeManager())
     }
 }
+

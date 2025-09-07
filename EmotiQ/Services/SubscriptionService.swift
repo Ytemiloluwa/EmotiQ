@@ -5,26 +5,105 @@
 //  Created by Temiloluwa on 05-08-2025.
 //
 
+
 import Foundation
 import Combine
+import SwiftUI
 import RevenueCat
+
+// MARK: - Feature Types
+enum FeatureType: String, CaseIterable {
+    case voiceCheckIns = "voice_check_ins"
+    case voiceCloning = "voice_cloning"
+    case voiceAffirmations = "voice_affirmations"
+    case goalSetting = "goal_setting"
+    case personalizedCoaching = "personalized_coaching"
+    case advancedAnalytics = "advanced_analytics"
+    case dataExport = "data_export"
+    case prioritySupport = "priority_support"
+    case earlyAccess = "early_access"
+    
+    var displayName: String {
+        switch self {
+        case .voiceCheckIns:
+            return "Voice Check-ins"
+        case .voiceCloning:
+            return "Voice Cloning"
+        case .voiceAffirmations:
+            return "Voice Affirmations"
+        case .goalSetting:
+            return "Goal Setting"
+        case .personalizedCoaching:
+            return "Personalized Coaching"
+        case .advancedAnalytics:
+            return "Advanced Analytics"
+        case .dataExport:
+            return "Data Export"
+        case .prioritySupport:
+            return "Priority Support"
+        case .earlyAccess:
+            return "Early Access"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .voiceCheckIns:
+            return "Analyze your emotions through voice recordings"
+        case .voiceCloning:
+            return "Create a custom voice profile for personalized content"
+        case .voiceAffirmations:
+            return "Receive personalized voice affirmations"
+        case .goalSetting:
+            return "Set and track emotional wellness goals"
+        case .personalizedCoaching:
+            return "Get personalized emotional wellness coaching"
+        case .advancedAnalytics:
+            return "Access detailed emotional patterns and trends"
+        case .dataExport:
+            return "Export your emotional data for analysis"
+        case .prioritySupport:
+            return "Get priority customer support"
+        case .earlyAccess:
+            return "Access new features before general release"
+        }
+    }
+}
 
 protocol SubscriptionServiceProtocol {
     var currentSubscription: AnyPublisher<SubscriptionStatus, Never> { get }
     var dailyUsageRemaining: AnyPublisher<Int, Never> { get }
+    var weeklyUsageRemaining: AnyPublisher<Int, Never> { get }
     func checkSubscriptionStatus() -> AnyPublisher<SubscriptionStatus, Error>
     func purchaseSubscription(_ tier: SubscriptionStatus) -> AnyPublisher<Bool, Error>
     func restorePurchases() -> AnyPublisher<SubscriptionStatus, Error>
     func canPerformVoiceAnalysis() -> Bool
     func incrementDailyUsage()
+    func incrementWeeklyUsage()
     func getRemainingDailyUsage() -> Int
+    func getRemainingWeeklyUsage() -> Int
+    func refreshDailyUsage()
+    func refreshWeeklyUsage()
+    func checkFeatureAccess(_ feature: FeatureType) -> Bool
+    func hasVoiceCloning() -> Bool
+    func hasGoalSetting() -> Bool
+    func hasPersonalizedCoaching() -> Bool
+    func hasAdvancedAnalytics() -> Bool
+    func hasDataExport() -> Bool
+    func hasPrioritySupport() -> Bool
+    func hasEarlyAccess() -> Bool
 }
 
 class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
+    func hasDataExport() -> Bool {
+        return subscriptionStatus == .pro
+    }
+    
     static let shared = SubscriptionService()
     
     @Published private var subscriptionStatus: SubscriptionStatus = .free
     @Published var dailyUsage: Int = 0
+    @Published var weeklyUsage: Int = 0
     private let revenueCatService: RevenueCatServiceProtocol
     private let persistenceController: PersistenceController
     private var cancellables = Set<AnyCancellable>()
@@ -37,6 +116,14 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         $dailyUsage
             .map { usage in
                 max(0, Config.Subscription.freeDailyLimit - usage)
+            }
+            .eraseToAnyPublisher()
+    }
+    
+    var weeklyUsageRemaining: AnyPublisher<Int, Never> {
+        $weeklyUsage
+            .map { usage in
+                max(0, Config.Subscription.freeWeeklyLimit - usage)
             }
             .eraseToAnyPublisher()
     }
@@ -55,16 +142,19 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         hasActiveSubscription ? Calendar.current.date(byAdding: .month, value: 1, to: Date()) : nil
     }
     
-    init(revenueCatService: RevenueCatServiceProtocol = RevenueCatService(),
+    init(revenueCatService: RevenueCatServiceProtocol = RevenueCatService.shared,
          persistenceController: PersistenceController = .shared) {
         self.revenueCatService = revenueCatService
         self.persistenceController = persistenceController
         
-        self.revenueCatService.configure()
+        // Note: RevenueCat is configured in AppDelegate, no need to configure here
         loadInitialSubscriptionStatus()
         loadDailyUsage()
+        loadWeeklyUsage()
     }
+    
 
+    
     private func loadInitialSubscriptionStatus() {
         // Load from Core Data first
         if let user = persistenceController.getCurrentUser() {
@@ -95,12 +185,70 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
     }
     
     private func loadDailyUsage() {
+        print("🔍 DEBUG: loadDailyUsage() called")
+        
         if let user = persistenceController.getCurrentUser() {
-            dailyUsage = Int(user.dailyCheckInsUsed)
+            print("🔍 DEBUG: Found current user")
             
-            if Config.isDebugMode {
-                print("📊 Loaded daily usage: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+            // Check if we need to reset daily usage (new day)
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            print("🔍 DEBUG: Today's start: \(today)")
+            
+            if let lastCheckIn = user.lastCheckInDate {
+                let lastCheckInDay = calendar.startOfDay(for: lastCheckIn)
+                print("🔍 DEBUG: Last check-in day: \(lastCheckInDay)")
+                
+                if lastCheckInDay < today {
+                    // Reset daily usage for new day
+                    print("🔍 DEBUG: New day detected, resetting daily usage")
+                    user.dailyCheckInsUsed = 0
+                    persistenceController.save()
+                    
+                    if Config.isDebugMode {
+                        print("🔄 Daily usage reset for new day")
+                    }
+                } else {
+                    print("🔍 DEBUG: Same day, no reset needed")
+                }
+            } else {
+                print("🔍 DEBUG: No lastCheckInDate found")
             }
+            
+            DispatchQueue.main.async {
+                self.dailyUsage = Int(user.dailyCheckInsUsed)
+                print("🔍 DEBUG: Set dailyUsage to: \(self.dailyUsage)")
+                
+                if Config.isDebugMode {
+                    print("📊 Loaded daily usage: \(self.dailyUsage)/\(Config.Subscription.freeWeeklyLimit)")
+                }
+            }
+        } else {
+            print("🔍 DEBUG: No current user found")
+        }
+    }
+    
+    private func loadWeeklyUsage() {
+        print("🔍 DEBUG: loadWeeklyUsage() called")
+        
+        if let user = persistenceController.getCurrentUser() {
+            print("🔍 DEBUG: Found current user for weekly usage")
+            
+            // Check if we need to reset weekly usage (7 days from week start)
+            if persistenceController.shouldResetWeeklyUsage(for: user) {
+                persistenceController.resetWeeklyUsage(for: user)
+            }
+
+            DispatchQueue.main.async {
+                self.weeklyUsage = Int(user.weeklyCheckInsUsed)
+                print("🔍 DEBUG: Set weeklyUsage to: \(self.weeklyUsage)")
+                
+                if Config.isDebugMode {
+                    print("📊 Loaded weekly usage: \(self.weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
+                }
+            }
+        } else {
+            print("🔍 DEBUG: No current user found for weekly usage")
         }
     }
     
@@ -127,6 +275,41 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
                 }
             }
             .eraseToAnyPublisher()
+    }
+    
+    // MARK: - Safe Subscription Refresh
+    func refreshSubscriptionStatus() async {
+        // Safe refresh of subscription status that doesn't interfere with view updates
+        // This is called after successful purchases to unlock features
+        do {
+            let customerInfo = try await revenueCatService.getCustomerInfoAsync()
+            let newStatus: SubscriptionStatus
+            
+            if customerInfo.activeSubscriptions.contains(Config.Subscription.proMonthlyProductID) {
+                newStatus = .pro
+            } else if customerInfo.activeSubscriptions.contains(Config.Subscription.premiumMonthlyProductID) {
+                newStatus = .premium
+            } else {
+                newStatus = .free
+            }
+            
+            // Use a slight delay to avoid "Publishing changes from within view updates" error
+            //try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            
+            // Update the published property to trigger UI updates
+            await MainActor.run {
+                self.subscriptionStatus = newStatus
+                self.updateUserSubscriptionStatus(newStatus)
+                
+                if Config.isDebugMode {
+                    print("🔄 Subscription status refreshed to: \(newStatus.displayName)")
+                }
+            }
+        } catch {
+            if Config.isDebugMode {
+                print("❌ Failed to refresh subscription status: \(error)")
+            }
+        }
     }
     
     func purchaseSubscription(_ tier: SubscriptionStatus) -> AnyPublisher<Bool, Error> {
@@ -192,9 +375,9 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
             return true
         }
         
-        // Check daily limit for free users
+        // Check weekly limit for free users (new implementation)
         let user = persistenceController.createUserIfNeeded()
-        return persistenceController.canPerformDailyCheckIn(for: user)
+        return persistenceController.canPerformWeeklyCheckIn(for: user)
     }
     
     func incrementDailyUsage() {
@@ -207,8 +390,30 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         // Update local state
         dailyUsage = Int(user.dailyCheckInsUsed)
         
+        // Also increment weekly usage for free users
+        if subscriptionStatus == .free {
+            persistenceController.incrementWeeklyUsage(for: user)
+            weeklyUsage = Int(user.weeklyCheckInsUsed)
+        }
+        
         if Config.isDebugMode {
             print("📈 Daily usage incremented: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+            print("📈 Weekly usage incremented: \(weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
+        }
+    }
+    
+    func incrementWeeklyUsage() {
+        // Only increment for free users
+        guard subscriptionStatus == .free else { return }
+        
+        let user = persistenceController.createUserIfNeeded()
+        persistenceController.incrementWeeklyUsage(for: user)
+        
+        // Update local state
+        weeklyUsage = Int(user.weeklyCheckInsUsed)
+        
+        if Config.isDebugMode {
+            print("📈 Weekly usage incremented: \(weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
         }
     }
     
@@ -221,14 +426,74 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         return max(0, Config.Subscription.freeDailyLimit - dailyUsage)
     }
     
-    // MARK: - Subscription Benefits
+    func getRemainingWeeklyUsage() -> Int {
+        // Unlimited for premium users
+        if subscriptionStatus != .free {
+            return -1 // Indicates unlimited
+        }
+        
+        return max(0, Config.Subscription.freeWeeklyLimit - weeklyUsage)
+    }
+    
+    /// Refreshes daily usage and checks for daily reset
+    func refreshDailyUsage() {
+        print("🔍 DEBUG: refreshDailyUsage() called")
+        let previousUsage = dailyUsage
+        print("🔍 DEBUG: Previous usage: \(previousUsage)")
+        
+        loadDailyUsage()
+        print("🔍 DEBUG: After loadDailyUsage() - dailyUsage: \(dailyUsage)")
+        
+        // If usage was reset (went from >0 to 0), notify other components
+        if previousUsage > 0 && dailyUsage == 0 {
+            print("🔍 DEBUG: Daily usage reset detected (previous: \(previousUsage) -> current: \(dailyUsage))")
+            NotificationCenter.default.post(name: .dailyUsageReset, object: nil)
+            
+            if Config.isDebugMode {
+                print("🔄 Daily usage reset detected and notification posted")
+            }
+        }
+        
+        if Config.isDebugMode {
+            print("🔄 Daily usage refreshed: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
+        }
+    }
+    
+    /// Refreshes weekly usage and checks for weekly reset
+    func refreshWeeklyUsage() {
+        print("🔍 DEBUG: refreshWeeklyUsage() called")
+        let previousUsage = weeklyUsage
+        print("🔍 DEBUG: Previous weekly usage: \(previousUsage)")
+        
+        loadWeeklyUsage()
+        print("🔍 DEBUG: After loadWeeklyUsage() - weeklyUsage: \(weeklyUsage)")
+        
+        // If usage was reset (went from >0 to 0), notify other components
+        if previousUsage > 0 && weeklyUsage == 0 {
+            print("🔍 DEBUG: Weekly usage reset detected (previous: \(previousUsage) -> current: \(weeklyUsage))")
+            NotificationCenter.default.post(name: .weeklyUsageReset, object: nil)
+            
+            if Config.isDebugMode {
+                print("🔄 Weekly usage reset detected and notification posted")
+            }
+        }
+        
+        if Config.isDebugMode {
+            print("🔄 Weekly usage refreshed: \(weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
+        }
+    }
+    
+
+    
+    // MARK: - Feature Access Control
     
     func hasUnlimitedAccess() -> Bool {
         return subscriptionStatus != .free
     }
     
     func hasVoiceCloning() -> Bool {
-        return subscriptionStatus == .pro
+        // Both Premium and Pro users get voice cloning
+        return subscriptionStatus == .premium || subscriptionStatus == .pro
     }
     
     func hasAdvancedAnalytics() -> Bool {
@@ -243,76 +508,75 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         return subscriptionStatus == .pro
     }
     
+    func hasVoiceAffirmations() -> Bool {
+        // Voice affirmations have their own subscription system
+        // This will be checked separately in the AffirmationEngine
+        return true // For now, allow all users to access
+    }
+    
+    func hasGoalSetting() -> Bool {
+        return subscriptionStatus != .free
+    }
+    
+    func hasPrioritySupport() -> Bool {
+        return subscriptionStatus == .pro
+    }
+    
+    func hasEarlyAccess() -> Bool {
+        return subscriptionStatus == .pro
+    }
+    
+    // MARK: - Comprehensive Feature Check
+    func checkFeatureAccess(_ feature: FeatureType) -> Bool {
+        switch feature {
+        case .voiceCheckIns:
+            return hasUnlimitedAccess() || getRemainingWeeklyUsage() > 0
+        case .voiceCloning:
+            return hasVoiceCloning()
+        case .voiceAffirmations:
+            return hasVoiceAffirmations()
+        case .goalSetting:
+            return hasGoalSetting()
+        case .personalizedCoaching:
+            return hasPersonalizedCoaching()
+        case .advancedAnalytics:
+            return hasAdvancedAnalytics()
+        case .dataExport:
+            return canExportData()
+        case .prioritySupport:
+            return hasPrioritySupport()
+        case .earlyAccess:
+            return hasEarlyAccess()
+        }
+    }
+
+    
     // MARK: - Pricing Information
     
     func getSubscriptionPricing() -> [(tier: SubscriptionStatus, price: String, features: [String])] {
         return [
             (tier: .free, price: "Free", features: [
-                "3 daily voice check-ins",
+                "6 weekly voice check-ins",
                 "Basic emotion tracking",
                 "Simple insights"
             ]),
             (tier: .premium, price: Config.Subscription.premiumPrice + "/month", features: [
                 "Unlimited voice check-ins",
+                "Voice cloning",
                 "Advanced emotion analysis",
                 "Personalized coaching",
-                "ElevenLabs voice affirmations"
+                "Goal setting & tracking",
+                "Advanced analytics"
             ]),
             (tier: .pro, price: Config.Subscription.proPrice + "/month", features: [
                 "Everything in Premium",
-                "Custom voice cloning",
-                "Advanced analytics",
-                "Data export",
-                "Priority support"
+                "Data export capabilities",
+                "Priority customer support",
+                "Early access to new features"
             ])
         ]
     }
 }
 
-// CustomerInfo struct for RevenueCat integration
-struct CustomerInfo {
-    let activeSubscriptions: [String]
-    let originalPurchaseDate: Date?
-    let latestExpirationDate: Date?
-    
-    init(activeSubscriptions: [String] = [], originalPurchaseDate: Date? = nil, latestExpirationDate: Date? = nil) {
-        self.activeSubscriptions = activeSubscriptions
-        self.originalPurchaseDate = originalPurchaseDate
-        self.latestExpirationDate = latestExpirationDate
-    }
-}
 
 
-
-// SANBOX testing //
-//    func loadOfferings() {
-//        revenueCatService.getOfferings()
-//            .receive(on: DispatchQueue.main)
-//            .sink(
-//                receiveCompletion: { completion in
-//                    if case .failure(let error) = completion {
-//                        if Config.isDebugMode {
-//                            print("❌ Failed to load offerings: \(error)")
-//                        }
-//                    }
-//                },
-//                receiveValue: { [weak self] offerings in
-//                    self?.currentOffering = offerings.current
-//
-//                    if let offering = offerings.current {
-//                        self?.availablePackages = offering.availablePackages
-//
-//                        if Config.isDebugMode {
-//                            print("✅ Loaded \(offering.availablePackages.count) packages")
-//                        }
-//                    }
-//                }
-//            )
-//            .store(in: &cancellables)
-//    }
-// SANBOX testing //
-
-// SANBOX testing //
-
-//    @Published var currentOffering: Offering?
-//    @Published var availablePackages: [Package] = []

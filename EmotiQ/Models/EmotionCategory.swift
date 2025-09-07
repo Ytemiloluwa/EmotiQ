@@ -10,6 +10,7 @@ import SwiftUI
 
 // MARK: - Emotion Category Model
 /// Represents the 7 core emotion categories used in EmotiQ's analysis system
+/// Based on psychological research and optimized for voice analysis accuracy
 enum EmotionCategory: String, CaseIterable, Identifiable {
     case joy = "joy"
     case sadness = "sadness"

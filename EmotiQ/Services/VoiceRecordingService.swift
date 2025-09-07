@@ -111,16 +111,17 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
     // MARK: - Audio Session Setup
     
     private func setupAudioSession() {
-        do {
-            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
-            try audioSession.setActive(true)
-            
-            if Config.isDebugMode {
-                print("🎤 Audio session configured successfully")
-            }
-        } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to setup audio session: \(error)")
+        Task {
+            do {
+                try await AudioSessionManager.shared.configureAudioSession(for: .recording)
+                
+                if Config.isDebugMode {
+                    print("🎤 Audio session configured successfully")
+                }
+            } catch {
+                if Config.isDebugMode {
+                    print("❌ Failed to setup audio session: \(error)")
+                }
             }
         }
     }

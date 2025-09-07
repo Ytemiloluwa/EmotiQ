@@ -31,8 +31,8 @@ struct VoiceAnalysisView: View {
                         // MARK: - Usage Information
                         if !subscriptionService.hasActiveSubscription {
                             UsageLimitCard(
-                                used: viewModel.dailyUsageCount,
-                                limit: viewModel.dailyUsageLimit
+                                used: viewModel.weeklyUsageCount,
+                                limit: viewModel.weeklyUsageLimit
                             )
                         }
                         
@@ -63,13 +63,13 @@ struct VoiceAnalysisView: View {
             .sheet(isPresented: $showingSubscriptionPaywall) {
                 SubscriptionPaywallView()
             }
-            .alert("Daily Limit Reached", isPresented: $viewModel.showingLimitAlert) {
+            .alert("Weekly Limit Reached", isPresented: $viewModel.showingLimitAlert) {
                 Button("Upgrade to Premium") {
                     showingSubscriptionPaywall = true
                 }
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("You've reached your daily limit of \(viewModel.dailyUsageLimit) voice analyses. Upgrade to Premium for unlimited access.")
+                Text("You've reached your weekly limit of \(viewModel.weeklyUsageLimit) voice analyses. Upgrade to Premium for unlimited access.")
             }
             .alert("Analysis Error", isPresented: $viewModel.showingErrorAlert) {
                 Button("OK", role: .cancel) { }
@@ -80,7 +80,16 @@ struct VoiceAnalysisView: View {
         .onAppear {
             viewModel.checkDailyUsage()
         }
-
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToVoiceAnalysis)) { _ in
+            // VoiceAnalysisView is already active, no navigation needed
+            // But we can trigger any specific actions if needed
+        }
+        
+        //        .refreshable {
+        //            // Pull to refresh - check daily usage
+        //            viewModel.checkDailyUsage()
+        //        }
+        
     }
     
     // MARK: - Background Gradient
@@ -187,7 +196,7 @@ struct VoiceRecordingInterface: View {
             // Enhanced Bar Visualization
             if viewModel.isRecording {
                 AudioLevelVisualization(
-                    audioLevel: viewModel.getNormalizedAudioLevel(),
+                    audioLevels: viewModel.audioLevelsArray,
                     isRecording: viewModel.isRecording
                 )
                 .frame(height: 60)
@@ -226,7 +235,7 @@ struct UsageLimitCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Daily Usage")
+                Text("Weekly Usage")
                     .font(.headline)
                     .fontWeight(.semibold)
                 
@@ -259,7 +268,7 @@ struct UsageLimitCard: View {
                     .foregroundColor(.secondary)
             } else {
                 let remaining = limit - used
-                Text("\(remaining) analysis remaining today")
+                Text("\(remaining) analysis remaining this week")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -287,7 +296,7 @@ struct RecentAnalysisSection: View {
                 // Emotion icon
                 ZStack {
                     Circle()
-                        .fill(result.primaryEmotion.color.opacity(0.2))
+                    //.fill(result.primaryEmotion.color.opacity(0.2))
                         .frame(width: 50, height: 50)
                     
                     Text(result.primaryEmotion.emoji)
@@ -338,7 +347,7 @@ struct RecordingTipsSection: View {
                 TipRow(icon: "mic", text: "Speak naturally in a quiet environment")
                 TipRow(icon: "timer", text: "Record for 2-120 seconds for best results")
                 TipRow(icon: "speaker.wave.2", text: "Express your current feelings authentically")
-                TipRow(icon: "lock.shield", text: "Your voice data is processed on your device")
+                TipRow(icon: "lock.shield", text: "Your voice is processed on your device")
             }
         }
         .padding()
@@ -384,5 +393,7 @@ struct VoiceAnalysisView_Previews: PreviewProvider {
 extension Notification.Name {
     static let recordingCompleted = Notification.Name("recordingCompleted")
     static let emotionalDataSaved = Notification.Name("emotionalDataSaved")
+    static let dailyUsageReset = Notification.Name("dailyUsageReset")
+    static let weeklyUsageReset = Notification.Name("weeklyUsageReset")
 }
 

@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var subscriptionService = SubscriptionService()
+    @EnvironmentObject private var subscriptionService: SubscriptionService
     @StateObject private var emotionService = CoreMLEmotionService()
     @StateObject private var voiceRecordingService = VoiceRecordingService()
     @State private var showingOnboarding = false
@@ -21,6 +21,8 @@ struct ContentView: View {
                     .environmentObject(subscriptionService)
                     .environmentObject(emotionService)
                     .environmentObject(voiceRecordingService)
+                    .environmentObject(HapticManager.shared)
+                    .environmentObject(ElevenLabsService.shared)
             } else {
                 AuthenticationView(isAuthenticated: $isAuthenticated)
             }

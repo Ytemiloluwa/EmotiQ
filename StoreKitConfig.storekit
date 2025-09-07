@@ -1,0 +1,179 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "B04C5836",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "6751723171",
+      "localizations" : [
+        {
+          "description" : "Generate 10 custom affirmations in your voice",
+          "displayName" : "10 Affirmation Pack",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Generate 10 custom affirmations in your voice",
+          "displayName" : "10 Affirmation Pack",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "affirmation_pack_10",
+      "referenceName" : "10 Affirmation Generations Pack",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "15.99",
+      "familyShareable" : false,
+      "internalID" : "6751729255",
+      "localizations" : [
+        {
+          "description" : "Generate unlimited affirmations in your voice",
+          "displayName" : "Unlimited Affirmation Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "affirmation_lifetime",
+      "referenceName" : "Lifetime Affirmation Access",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6749479428",
+    "_developerTeamID" : "4Q6S759NWS",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 778495908.234887,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21751591",
+      "localizations" : [
+
+      ],
+      "name" : "EmotiQ_Subscriptions",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "3.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6749782437",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited voice checkins and emotion analysis",
+              "displayName" : "EmotiQ Premium",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "emotiq_premium_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "EmotiQ Premium Monthly",
+          "subscriptionGroupID" : "21751591",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "7.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6749782396",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Everything in Premium plus voice cloning",
+              "displayName" : "EmotiQ Pro",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "emotiq_pro_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "EmotiQ Pro Monthly",
+          "subscriptionGroupID" : "21751591",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

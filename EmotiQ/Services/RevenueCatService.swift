@@ -11,16 +11,24 @@ import RevenueCat
 
 protocol RevenueCatServiceProtocol {
     func configure()
-    func getCustomerInfo() -> AnyPublisher<CustomerInfo, Error>
+    func getCustomerInfo() -> AnyPublisher<RevenueCat.CustomerInfo, Error>
+    func getCustomerInfoAsync() async throws -> RevenueCat.CustomerInfo
     func purchaseProduct(_ productIdentifier: String) -> AnyPublisher<Bool, Error>
-    func restorePurchases() -> AnyPublisher<CustomerInfo, Error>
+    func restorePurchases() -> AnyPublisher<RevenueCat.CustomerInfo, Error>
     func getOfferings() -> AnyPublisher<RevenueCat.Offerings, Error>
+    func getOfferings() async throws -> RevenueCat.Offerings
     func checkTrialEligibility() -> AnyPublisher<Bool, Error>
 }
 
 class RevenueCatService: RevenueCatServiceProtocol {
     
-    private var isConfigured = false
+    // MARK: - Singleton
+    static let shared = RevenueCatService()
+    
+    private(set) var isConfigured = false
+    
+    // Configuration completion callback
+    var onConfigurationComplete: (() -> Void)?
     
     func configure() {
         guard !Config.revenueCatAPIKey.isEmpty && !Config.revenueCatAPIKey.contains("YOUR_") else {
@@ -28,6 +36,10 @@ class RevenueCatService: RevenueCatServiceProtocol {
                 print("⚠️ RevenueCat API key not configured - using mock mode")
             }
             return
+        }
+        
+        if Config.isDebugMode {
+            print("🔍 RevenueCat: Starting configuration...")
         }
         
         // Configure RevenueCat with your API key
@@ -40,16 +52,32 @@ class RevenueCatService: RevenueCatServiceProtocol {
             "build_number": Config.buildNumber
         ])
         
-        isConfigured = true
+        // Wait for RevenueCat to be ready by testing a simple operation
+        Purchases.shared.getCustomerInfo { [weak self] customerInfo, error in
+            DispatchQueue.main.async {
+                if error == nil {
+                    self?.isConfigured = true
+                    if Config.isDebugMode {
+                        print("✅ RevenueCat configured successfully and ready")
+                    }
+                    // Notify listeners that configuration is complete
+                    self?.onConfigurationComplete?()
+                } else {
+                    if Config.isDebugMode {
+                        print("❌ RevenueCat configuration failed: \(error?.localizedDescription ?? "Unknown error")")
+                    }
+                }
+            }
+        }
         
         if Config.isDebugMode {
-            print("✅ RevenueCat configured successfully")
+            print("🔍 RevenueCat: Configuration call completed, waiting for readiness...")
         }
     }
     
-    func getCustomerInfo() -> AnyPublisher<CustomerInfo, Error> {
+    func getCustomerInfo() -> AnyPublisher<RevenueCat.CustomerInfo, Error> {
         guard isConfigured else {
-            return getMockCustomerInfo()
+            return Fail(error: RevenueCatError.configurationFailed).eraseToAnyPublisher()
         }
         
         return Future { promise in
@@ -57,12 +85,8 @@ class RevenueCatService: RevenueCatServiceProtocol {
                 if let error = error {
                     promise(.failure(error))
                 } else if let customerInfo = customerInfo {
-                    let customInfo = CustomerInfo(
-                        activeSubscriptions: Array(customerInfo.activeSubscriptions),
-                        originalPurchaseDate: customerInfo.originalPurchaseDate,
-                        latestExpirationDate: customerInfo.latestExpirationDate
-                    )
-                    promise(.success(customInfo))
+                    // Return RevenueCat's actual CustomerInfo directly
+                    promise(.success(customerInfo))
                 } else {
                     promise(.failure(RevenueCatError.customerInfoFailed))
                 }
@@ -71,9 +95,27 @@ class RevenueCatService: RevenueCatServiceProtocol {
         .eraseToAnyPublisher()
     }
     
+    func getCustomerInfoAsync() async throws -> RevenueCat.CustomerInfo {
+        guard isConfigured else {
+            throw RevenueCatError.configurationFailed
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            Purchases.shared.getCustomerInfo { customerInfo, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let customerInfo = customerInfo {
+                    continuation.resume(returning: customerInfo)
+                } else {
+                    continuation.resume(throwing: RevenueCatError.customerInfoFailed)
+                }
+            }
+        }
+    }
+    
     func purchaseProduct(_ productIdentifier: String) -> AnyPublisher<Bool, Error> {
         guard isConfigured else {
-            return getMockPurchase(productIdentifier)
+            return Fail(error: RevenueCatError.configurationFailed).eraseToAnyPublisher()
         }
         
         return Future { promise in
@@ -109,9 +151,9 @@ class RevenueCatService: RevenueCatServiceProtocol {
         .eraseToAnyPublisher()
     }
     
-    func restorePurchases() -> AnyPublisher<CustomerInfo, Error> {
+    func restorePurchases() -> AnyPublisher<RevenueCat.CustomerInfo, Error> {
         guard isConfigured else {
-            return getMockRestore()
+            return Fail(error: RevenueCatError.configurationFailed).eraseToAnyPublisher()
         }
         
         return Future { promise in
@@ -119,12 +161,8 @@ class RevenueCatService: RevenueCatServiceProtocol {
                 if let error = error {
                     promise(.failure(error))
                 } else if let customerInfo = customerInfo {
-                    let customInfo = CustomerInfo(
-                        activeSubscriptions: Array(customerInfo.activeSubscriptions),
-                        originalPurchaseDate: customerInfo.originalPurchaseDate,
-                        latestExpirationDate: customerInfo.latestExpirationDate
-                    )
-                    promise(.success(customInfo))
+                    // Return RevenueCat's actual CustomerInfo directly
+                    promise(.success(customerInfo))
                     
                     if Config.isDebugMode {
                         print("✅ Purchases restored successfully")
@@ -138,17 +176,39 @@ class RevenueCatService: RevenueCatServiceProtocol {
     }
     
     func getOfferings() -> AnyPublisher<RevenueCat.Offerings, Error> {
+        // If not configured, try to configure first
+        if !isConfigured {
+            configure()
+        }
+        
+        // If still not configured after trying, return error
         guard isConfigured else {
-            return getMockOfferings()
+            if Config.isDebugMode {
+                print("⚠️ RevenueCat not configured, returning error")
+            }
+            return Fail(error: RevenueCatError.configurationFailed).eraseToAnyPublisher()
+        }
+        
+        if Config.isDebugMode {
+            print("📦 RevenueCat configured, fetching real offerings")
         }
         
         return Future { promise in
             Purchases.shared.getOfferings { offerings, error in
                 if let error = error {
+                    if Config.isDebugMode {
+                        print("❌ RevenueCat getOfferings error: \(error)")
+                    }
                     promise(.failure(error))
                 } else if let offerings = offerings {
+                    if Config.isDebugMode {
+                        print("✅ RevenueCat offerings loaded successfully")
+                    }
                     promise(.success(offerings))
                 } else {
+                    if Config.isDebugMode {
+                        print("❌ RevenueCat offerings is nil")
+                    }
                     promise(.failure(RevenueCatError.offeringsFailed))
                 }
             }
@@ -156,48 +216,45 @@ class RevenueCatService: RevenueCatServiceProtocol {
         .eraseToAnyPublisher()
     }
     
-    // Add these methods to RevenueCatService class
-
-    ///////////////////// SANDBOX TESTING CODE ///////////////////////////////
-
-    ///////////////////// SANDBOX TESTING CODE ///////////////////////////////
-//    func purchasePackage(_ package: Package) -> AnyPublisher<CustomerInfo, Error> {
-//        return Future { promise in
-//            guard self.isConfigured else {
-//                // Mock successful purchase for development
-//                if Config.isDebugMode {
-//                    print("🧪 Mock purchase successful for: \(package.identifier)")
-//                }
-//                // Return a mock customer info for development
-//                let mockCustomerInfo = CustomerInfo(
-//                    activeSubscriptions: [package.identifier],
-//                    originalPurchaseDate: Date(),
-//                    latestExpirationDate: Date().addingTimeInterval(86400 * 30)
-//                )
-//                promise(.success(mockCustomerInfo))
-//                return
-//            }
-//            
-//            Purchases.shared.purchase(package: package) { transaction, customerInfo, error, userCancelled in
-//                if let error = error {
-//                    promise(.failure(error))
-//                } else if userCancelled {
-//                    promise(.failure(RevenueCatError.purchaseCancelled))
-//                } else if let customerInfo = customerInfo {
-//                    let customInfo = CustomerInfo(
-//                        activeSubscriptions: Array(customerInfo.activeSubscriptions),
-//                        originalPurchaseDate: customerInfo.originalPurchaseDate,
-//                        latestExpirationDate: customerInfo.latestExpirationDate
-//                    )
-//                    promise(.success(customInfo))
-//                } else {
-//                    promise(.failure(RevenueCatError.purchaseFailed))
-//                }
-//            }
-//        }
-//        .eraseToAnyPublisher()
-//    }
-    ///////////////////// SANDBOX TESTING CODE ///////////////////////////////
+    func getOfferings() async throws -> RevenueCat.Offerings {
+        // If not configured, try to configure first
+        if !isConfigured {
+            configure()
+        }
+        
+        // If still not configured after trying, return error
+        guard isConfigured else {
+            if Config.isDebugMode {
+                print("⚠️ RevenueCat not configured, returning error")
+            }
+            throw RevenueCatError.configurationFailed
+        }
+        
+        if Config.isDebugMode {
+            print("📦 RevenueCat configured, fetching real offerings")
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            Purchases.shared.getOfferings { offerings, error in
+                if let error = error {
+                    if Config.isDebugMode {
+                        print("❌ RevenueCat getOfferings error: \(error)")
+                    }
+                    continuation.resume(throwing: error)
+                } else if let offerings = offerings {
+                    if Config.isDebugMode {
+                        print("✅ RevenueCat offerings loaded successfully")
+                    }
+                    continuation.resume(returning: offerings)
+                } else {
+                    if Config.isDebugMode {
+                        print("❌ RevenueCat offerings is nil")
+                    }
+                    continuation.resume(throwing: RevenueCatError.offeringsFailed)
+                }
+            }
+        }
+    }
     
     func checkTrialEligibility() -> AnyPublisher<Bool, Error> {
         return getCustomerInfo()
@@ -232,75 +289,8 @@ class RevenueCatService: RevenueCatServiceProtocol {
         return nil
     }
     
+    // Removed convertOffering method - no longer needed since we're using RevenueCat native types
     
-    // MARK: - Mock Methods (for development without API key)
-    
-    private func getMockCustomerInfo() -> AnyPublisher<CustomerInfo, Error> {
-        return Future { promise in
-            DispatchQueue.global(qos: .userInitiated).async {
-                Thread.sleep(forTimeInterval: 0.5)
-                
-                DispatchQueue.main.async {
-                    let customerInfo = CustomerInfo(
-                        activeSubscriptions: [],
-                        originalPurchaseDate: nil,
-                        latestExpirationDate: nil
-                    )
-                    promise(.success(customerInfo))
-                }
-            }
-        }
-        .eraseToAnyPublisher()
-    }
-    
-    private func getMockPurchase(_ productIdentifier: String) -> AnyPublisher<Bool, Error> {
-        return Future { promise in
-            DispatchQueue.global(qos: .userInitiated).async {
-                Thread.sleep(forTimeInterval: 1.0)
-                
-                DispatchQueue.main.async {
-                    // Simulate 90% success rate for testing
-                    let success = Int.random(in: 1...10) <= 9
-                    promise(.success(success))
-                }
-            }
-        }
-        .eraseToAnyPublisher()
-    }
-    
-    private func getMockRestore() -> AnyPublisher<CustomerInfo, Error> {
-        return Future { promise in
-            DispatchQueue.global(qos: .userInitiated).async {
-                Thread.sleep(forTimeInterval: 1.0)
-                
-                DispatchQueue.main.async {
-                    let customerInfo = CustomerInfo(
-                        activeSubscriptions: [],
-                        originalPurchaseDate: Date().addingTimeInterval(-86400 * 30),
-                        latestExpirationDate: Date().addingTimeInterval(86400 * 30)
-                    )
-                    promise(.success(customerInfo))
-                }
-            }
-        }
-        .eraseToAnyPublisher()
-    }
-    
-    private func getMockOfferings() -> AnyPublisher<RevenueCat.Offerings, Error> {
-        return Future { promise in
-            DispatchQueue.global(qos: .userInitiated).async {
-                Thread.sleep(forTimeInterval: 0.5)
-                
-                DispatchQueue.main.async {
-                    // For mock mode, we'll return nil since we can't create RevenueCat types
-                    // In a real implementation, you'd need to create proper RevenueCat types
-                    // or handle mock data differently
-                    promise(.failure(RevenueCatError.offeringsFailed))
-                }
-            }
-        }
-        .eraseToAnyPublisher()
-    }
 }
 
 enum RevenueCatError: Error, LocalizedError {
@@ -312,7 +302,6 @@ enum RevenueCatError: Error, LocalizedError {
     case offeringsFailed
     case productNotFound
     case networkError
-    //case notConfigured
     
     var errorDescription: String? {
         switch self {
@@ -332,10 +321,6 @@ enum RevenueCatError: Error, LocalizedError {
             return "Subscription product not found."
         case .networkError:
             return "Network error. Please check your connection."
-        //case .notConfigured:
-           // return "RevenueCat not configured."
         }
     }
 }
-
-

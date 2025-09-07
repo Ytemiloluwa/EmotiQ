@@ -27,7 +27,6 @@ class BaseViewModel: ObservableObject {
     
     func clearError() {
         errorMessage = nil
-
     }
     
     func setLoading(_ loading: Bool) {

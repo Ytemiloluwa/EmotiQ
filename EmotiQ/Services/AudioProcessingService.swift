@@ -20,12 +20,11 @@ class AudioProcessingService: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var recordingDuration: TimeInterval = 0
     @Published var audioLevel: Float = 0
+    @Published var audioLevelsArray: [Float] = Array(repeating: 0.0, count: 20)
     @Published var recordingError: AudioProcessingError?
     
     // MARK: - Private Properties
     private var audioRecorder: AVAudioRecorder?
-    private var audioEngine: AVAudioEngine?
-    private var inputNode: AVAudioInputNode?
     private var recordingTimer: Timer?
     private var audioLevelTimer: Timer?
     private var recordingURL: URL?
@@ -33,8 +32,14 @@ class AudioProcessingService: NSObject, ObservableObject {
     
     // MARK: - Audio Level Publishers
     private let audioLevelSubject = PassthroughSubject<Float, Never>()
+    private let audioLevelsArraySubject = PassthroughSubject<[Float], Never>()
+    
     var audioLevels: AnyPublisher<Float, Never> {
         audioLevelSubject.eraseToAnyPublisher()
+    }
+    
+    var audioLevelsArrayPublisher: AnyPublisher<[Float], Never> {
+        audioLevelsArraySubject.eraseToAnyPublisher()
     }
     
     // MARK: - Configuration
@@ -73,11 +78,10 @@ class AudioProcessingService: NSObject, ObservableObject {
             throw AudioProcessingError.recordingFailed
         }
         
-        // Start real-time monitoring
-        try startRealTimeMonitoring()
-        
         isRecording = true
         recordingDuration = 0
+        audioLevel = 0
+        audioLevelsArray = Array(repeating: 0.0, count: 20)
         
         // Start timers
         startRecordingTimer()
@@ -97,10 +101,17 @@ class AudioProcessingService: NSObject, ObservableObject {
         
         // Stop recording
         audioRecorder?.stop()
-        stopRealTimeMonitoring()
         stopTimers()
         
         isRecording = false
+        audioLevel = 0
+        audioLevelsArray = Array(repeating: 0.0, count: 20)
+        
+        // Clean up audio session
+        cleanupAudioSession()
+        
+        // Reset audio recorder for next use
+        audioRecorder = nil
         
         // Verify recording file exists
         guard let url = recordingURL, FileManager.default.fileExists(atPath: url.path) else {
@@ -116,12 +127,18 @@ class AudioProcessingService: NSObject, ObservableObject {
         print("❌ Cancelling audio recording...")
         
         audioRecorder?.stop()
-        stopRealTimeMonitoring()
         stopTimers()
         
         isRecording = false
         recordingDuration = 0
         audioLevel = 0
+        audioLevelsArray = Array(repeating: 0.0, count: 20)
+        
+        // Clean up audio session
+        cleanupAudioSession()
+        
+        // Reset audio recorder for next use
+        audioRecorder = nil
         
         // Delete recording file if it exists
         if let url = recordingURL {
@@ -149,14 +166,25 @@ class AudioProcessingService: NSObject, ObservableObject {
     // MARK: - Private Methods
     
     private func setupAudioSession() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
-            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-            print("✅ Audio session configured successfully")
-        } catch {
-            print("❌ Failed to setup audio session: \(error)")
-            recordingError = .audioSessionFailed
+        Task {
+            do {
+                try await AudioSessionManager.shared.configureAudioSession(for: .recording)
+                print("✅ Audio session configured successfully")
+            } catch {
+                print("❌ Failed to setup audio session: \(error)")
+                recordingError = .audioSessionFailed
+            }
+        }
+    }
+    
+    private func cleanupAudioSession() {
+        Task {
+            do {
+                try await AudioSessionManager.shared.deactivateAudioSession()
+                print("✅ Audio session deactivated successfully")
+            } catch {
+                print("❌ Failed to deactivate audio session: \(error)")
+            }
         }
     }
     
@@ -177,6 +205,12 @@ class AudioProcessingService: NSObject, ObservableObject {
     }
     
     private func setupRecording() throws {
+        // Ensure any existing recorder is cleaned up first
+        if let existingRecorder = audioRecorder {
+            existingRecorder.stop()
+            audioRecorder = nil
+        }
+        
         // Create unique recording URL
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let timestamp = Date().timeIntervalSince1970
@@ -197,6 +231,7 @@ class AudioProcessingService: NSObject, ObservableObject {
         
         // Create audio recorder
         audioRecorder = try AVAudioRecorder(url: url, settings: settings)
+        
         audioRecorder?.delegate = self
         audioRecorder?.isMeteringEnabled = true
         audioRecorder?.prepareToRecord()
@@ -204,67 +239,7 @@ class AudioProcessingService: NSObject, ObservableObject {
         print("🎙️ Recording setup complete: \(url.lastPathComponent)")
     }
     
-    private func startRealTimeMonitoring() throws {
-        // Ensure any existing monitoring is stopped first
-        stopRealTimeMonitoring()
-        
-        audioEngine = AVAudioEngine()
-        guard let audioEngine = audioEngine else {
-            throw AudioProcessingError.audioSessionFailed
-        }
-        
-        inputNode = audioEngine.inputNode
-        guard let inputNode = inputNode else {
-            throw AudioProcessingError.audioSessionFailed
-        }
-        
-        // Configure audio format for real-time processing
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        
-        // Install tap for real-time audio level monitoring
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.processRealTimeAudio(buffer: buffer)
-        }
-        
-        // Start audio engine
-        try audioEngine.start()
-        print("🎧 Real-time monitoring started")
-    }
-    
-    private func stopRealTimeMonitoring() {
-        // Safely stop audio engine and remove tap
-        if let engine = audioEngine {
-            if engine.isRunning {
-                engine.stop()
-            }
-            
-            // Remove tap only if input node exists
-            if let node = inputNode {
-                node.removeTap(onBus: 0)
-            }
-        }
-        
-        // Clear references after stopping
-        audioEngine = nil
-        inputNode = nil
-        print("⏸️ Real-time monitoring stopped")
-    }
-    
-    private func processRealTimeAudio(buffer: AVAudioPCMBuffer) {
-        guard let floatChannelData = buffer.floatChannelData else { return }
-        
-        let frameLength = Int(buffer.frameLength)
-        let samples = Array(UnsafeBufferPointer(start: floatChannelData[0], count: frameLength))
-        
-        // Calculate RMS level for visualization
-        let rms = sqrt(samples.map { $0 * $0 }.reduce(0, +) / Float(samples.count))
-        let level = min(max(rms * 10, 0), 1) // Scale and clamp to 0-1
-        
-        DispatchQueue.main.async {
-            self.audioLevel = level
-            self.audioLevelSubject.send(level)
-        }
-    }
+
     
     private func startRecordingTimer() {
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -281,7 +256,8 @@ class AudioProcessingService: NSObject, ObservableObject {
     }
     
     private func startAudioLevelTimer() {
-        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: Config.levelUpdateInterval, repeats: true) { [weak self] _ in
+        // Create timer and add to main run loop
+        audioLevelTimer = Timer(timeInterval: Config.levelUpdateInterval, repeats: true) { [weak self] _ in
             self?.audioRecorder?.updateMeters()
             if let recorder = self?.audioRecorder {
                 let averagePower = recorder.averagePower(forChannel: 0)
@@ -290,9 +266,24 @@ class AudioProcessingService: NSObject, ObservableObject {
                 DispatchQueue.main.async {
                     self?.audioLevel = normalizedLevel
                     self?.audioLevelSubject.send(normalizedLevel)
+                    
+                    // Update animated bars array
+                    self?.updateAudioLevelsArray(with: normalizedLevel)
                 }
             }
         }
+        
+        // Add timer to main run loop
+        //RunLoop.main.add(audioLevelTimer!, forMode: .common)
+    }
+    
+    private func updateAudioLevelsArray(with newLevel: Float) {
+        // Remove the first element and add the new level at the end
+        audioLevelsArray.removeFirst()
+        audioLevelsArray.append(newLevel)
+        
+        // Send the updated array for animated bars
+        audioLevelsArraySubject.send(audioLevelsArray)
     }
     
     private func stopTimers() {
@@ -894,4 +885,3 @@ enum AudioProcessingError: Error, LocalizedError {
         }
     }
 }
-

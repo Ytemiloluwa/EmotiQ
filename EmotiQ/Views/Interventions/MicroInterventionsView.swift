@@ -1,11 +1,3 @@
-//
-//  MicroInterventionsView.swift
-//  EmotiQ
-//
-//  Created by Temiloluwa on 18-08-2025.
-//
-
-import Foundation
 import SwiftUI
 import Combine
 
@@ -14,6 +6,7 @@ struct MicroInterventionsView: View {
     @StateObject private var viewModel = MicroInterventionsViewModel()
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
+    //@State private var showingVoiceGuidedIntervention = false
     
     var body: some View {
         NavigationView {
@@ -30,34 +23,34 @@ struct MicroInterventionsView: View {
                         QuickReliefSection(viewModel: viewModel)
                         
                         // MARK: - Breathing Exercises
-                        BreathingExercisesSection(viewModel: viewModel)
+                       // BreathingExercisesSection(viewModel: viewModel)
                         
                         // MARK: - Emotional Prompts
                         EmotionalPromptsSection(viewModel: viewModel)
                         
-                        // MARK: - Mindfulness Moments
-                        MindfulnessMomentsSection(viewModel: viewModel)
+//                        // MARK: - Mindfulness Moments
+//                        MindfulnessMomentsSection(viewModel: viewModel)
                         
-                        // MARK: - Recent Activity
-                        if !viewModel.recentInterventions.isEmpty {
-                            RecentActivitySection(viewModel: viewModel)
-                        }
+//                        // MARK: - Recent Activity
+//                        if !viewModel.recentInterventions.isEmpty {
+//                            RecentActivitySection(viewModel: viewModel)
+//                        }
                         
                         Spacer(minLength: 100)
                     }
                     .padding(.horizontal)
                 }
             }
-            .navigationTitle("Quick Relief")
+            .navigationTitle("Micro-Interventions")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(ThemeColors.accent)
-                }
-            }
+            //            .toolbar {
+            //                ToolbarItem(placement: .navigationBarTrailing) {
+            //                    Button("Done") {
+            //                        dismiss()
+            //                    }
+            //                    .foregroundColor(ThemeColors.accent)
+            //                }
+            //            }
             .sheet(item: $viewModel.selectedIntervention) { intervention in
                 InterventionDetailView(intervention: intervention, viewModel: viewModel)
             }
@@ -76,7 +69,7 @@ struct MicroInterventionsHeaderView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Quick Emotional Relief")
+                    Text("Quick Micro interventions")
                         .font(.title2)
                         .fontWeight(.semibold)
                         .foregroundColor(ThemeColors.primaryText)
@@ -105,7 +98,7 @@ struct QuickReliefSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Instant Relief")
+            Text("Quick Actions")
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(ThemeColors.primaryText)
@@ -148,15 +141,15 @@ struct QuickReliefCard: View {
                     .font(.caption)
                     .foregroundColor(ThemeColors.secondaryText)
                 
-                HStack {
-                    Image(systemName: "star.fill")
-                        .foregroundColor(.yellow)
-                        .font(.caption)
-                    
-                    Text("4.8")
-                        .font(.caption)
-                        .foregroundColor(ThemeColors.secondaryText)
-                }
+                //                HStack {
+                //                    Image(systemName: "star.fill")
+                //                        .foregroundColor(.yellow)
+                //                        .font(.caption)
+                //
+                //                    Text("4.8")
+                //                        .font(.caption)
+                //                        .foregroundColor(ThemeColors.secondaryText)
+                //                }
             }
             .frame(maxWidth: .infinity, minHeight: 140)
             .padding()
@@ -265,112 +258,6 @@ struct BreathingExerciseCard: View {
     }
 }
 
-// MARK: - Emotional Prompts Section
-struct EmotionalPromptsSection: View {
-    @ObservedObject var viewModel: MicroInterventionsViewModel
-    @EnvironmentObject private var themeManager: ThemeManager
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Emotional Prompts")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(ThemeColors.primaryText)
-            
-            VStack(spacing: 12) {
-                ForEach(viewModel.emotionalPrompts.prefix(3), id: \.id) { prompt in
-                    EmotionalPromptCard(prompt: prompt, viewModel: viewModel)
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Emotional Prompt Card
-struct EmotionalPromptCard: View {
-    let prompt: EmotionalPrompt
-    @ObservedObject var viewModel: MicroInterventionsViewModel
-    @EnvironmentObject private var themeManager: ThemeManager
-    @State private var isExpanded = false
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: prompt.icon)
-                    .font(.title3)
-                    .foregroundColor(prompt.category.color)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(prompt.title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(ThemeColors.primaryText)
-                    
-                    Text(prompt.category.displayName)
-                        .font(.caption)
-                        .foregroundColor(ThemeColors.secondaryText)
-                }
-                
-                Spacer()
-                
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        isExpanded.toggle()
-                    }
-                }) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(ThemeColors.accent)
-                }
-            }
-            
-            Text(prompt.question)
-                .font(.body)
-                .foregroundColor(ThemeColors.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Reflection Guide:")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(ThemeColors.secondaryText)
-                    
-                    ForEach(prompt.reflectionGuide, id: \.self) { guide in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("•")
-                                .foregroundColor(prompt.category.color)
-                            
-                            Text(guide)
-                                .font(.caption)
-                                .foregroundColor(ThemeColors.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    
-                    HStack {
-                        Spacer()
-                        
-                        Button("Start Reflection") {
-                            viewModel.startPromptReflection(prompt)
-                        }
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(prompt.category.color)
-                        .clipShape(Capsule())
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding()
-        .themedCard()
-    }
-}
-
 // MARK: - Mindfulness Moments Section
 struct MindfulnessMomentsSection: View {
     @ObservedObject var viewModel: MicroInterventionsViewModel
@@ -474,7 +361,11 @@ struct RecentActivityRow: View {
                     .fontWeight(.medium)
                     .foregroundColor(ThemeColors.primaryText)
                 
-                Text(intervention.completedAt, style: .relative)
+                //                Text(intervention.completedAt, style: .relative)
+                //                    .font(.caption)
+                //                    .foregroundColor(ThemeColors.secondaryText)
+                
+                Text(formatDate(intervention.completedAt))
                     .font(.caption)
                     .foregroundColor(ThemeColors.secondaryText)
             }
@@ -497,6 +388,13 @@ struct RecentActivityRow: View {
         }
         .padding(.vertical, 4)
     }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM/yy, HH:mm"
+        return formatter.string(from: date)
+    }
+    
 }
 
 // MARK: - Data Models
@@ -533,39 +431,94 @@ struct BreathingInstruction {
     let instruction: String
 }
 
-enum BreathingPhase: String, CaseIterable {
-    case inhale = "inhale"
-    case hold = "hold"
-    case exhale = "exhale"
-    case pause = "pause"
+
+
+// MARK: - Emotional Prompt Category (for compatibility)
+enum EmotionalPromptCategory: String, CaseIterable, Codable {
+    case all = "all"
+    case gratitude = "gratitude"
+    case selfCompassion = "self_compassion"
+    case mindfulness = "mindfulness"
+    case growth = "growth"
+    case relationships = "relationships"
+    case stress = "stress"
+    case confidence = "confidence"
+    case purpose = "purpose"
     
     var displayName: String {
         switch self {
-        case .inhale: return "Inhale"
-        case .hold: return "Hold"
-        case .exhale: return "Exhale"
-        case .pause: return "Pause"
+        case .all: return "All"
+        case .gratitude: return "Gratitude"
+        case .selfCompassion: return "Self-Compassion"
+        case .mindfulness: return "Mindfulness"
+        case .growth: return "Growth"
+        case .relationships: return "Relationships"
+        case .stress: return "Stress Relief"
+        case .confidence: return "Confidence"
+        case .purpose: return "Purpose"
         }
     }
     
-    var icon: String {
+    var color: Color {
         switch self {
-        case .inhale: return "arrow.up.circle"
-        case .hold: return "pause.circle"
-        case .exhale: return "arrow.down.circle"
-        case .pause: return "stop.circle"
+        case .all: return ThemeColors.accent
+        case .gratitude: return .green
+        case .selfCompassion: return .pink
+        case .mindfulness: return .purple
+        case .growth: return .blue
+        case .relationships: return .orange
+        case .stress: return .red
+        case .confidence: return .yellow
+        case .purpose: return .indigo
         }
     }
 }
 
-struct EmotionalPrompt: Identifiable {
-    let id = UUID()
+// MARK: - Emotional Prompt (for compatibility)
+struct EmotionalPrompt: Identifiable, Codable {
+    var id = UUID()
     let title: String
     let question: String
-    let category: PromptCategory
-    let icon: String
+    let category: EmotionalPromptCategory
     let reflectionGuide: [String]
-    let estimatedDuration: Int // in minutes
+    let icon: String
+    let estimatedDuration: String
+    
+    // Custom coding keys to handle UUID
+    enum CodingKeys: String, CodingKey {
+        case title, question, category, reflectionGuide, icon, estimatedDuration
+    }
+    
+    init(title: String, question: String, category: EmotionalPromptCategory, reflectionGuide: [String], icon: String, estimatedDuration: String) {
+        self.id = UUID()
+        self.title = title
+        self.question = question
+        self.category = category
+        self.reflectionGuide = reflectionGuide
+        self.icon = icon
+        self.estimatedDuration = estimatedDuration
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = UUID()
+        self.title = try container.decode(String.self, forKey: .title)
+        self.question = try container.decode(String.self, forKey: .question)
+        self.category = try container.decode(EmotionalPromptCategory.self, forKey: .category)
+        self.reflectionGuide = try container.decode([String].self, forKey: .reflectionGuide)
+        self.icon = try container.decode(String.self, forKey: .icon)
+        self.estimatedDuration = try container.decode(String.self, forKey: .estimatedDuration)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encode(question, forKey: .question)
+        try container.encode(category, forKey: .category)
+        try container.encode(reflectionGuide, forKey: .reflectionGuide)
+        try container.encode(icon, forKey: .icon)
+        try container.encode(estimatedDuration, forKey: .estimatedDuration)
+    }
 }
 
 enum PromptCategory: String, CaseIterable {
@@ -728,47 +681,46 @@ class MicroInterventionsViewModel: ObservableObject {
         )
     ]
     
-    let emotionalPrompts: [EmotionalPrompt] = [
-        EmotionalPrompt(
-            title: "Gratitude Reflection",
-            question: "What are three things you're genuinely grateful for today, and why do they matter to you?",
-            category: .gratitude,
-            icon: "heart.text.square",
-            reflectionGuide: [
-                "Think beyond material things",
-                "Consider relationships and experiences",
-                "Notice small, everyday moments",
-                "Reflect on how these things impact your life"
-            ],
-            estimatedDuration: 5
-        ),
-        EmotionalPrompt(
-            title: "Self-Compassion Check",
-            question: "How would you comfort a good friend who was experiencing what you're going through right now?",
-            category: .selfCompassion,
-            icon: "heart.circle",
-            reflectionGuide: [
-                "Notice your inner critic",
-                "Imagine speaking to a dear friend",
-                "Use kind, understanding words",
-                "Offer yourself the same compassion"
-            ],
-            estimatedDuration: 7
-        ),
-        EmotionalPrompt(
-            title: "Values Exploration",
-            question: "What values are most important to you, and how are you living them today?",
-            category: .values,
-            icon: "star.circle",
-            reflectionGuide: [
-                "Identify your core values",
-                "Consider recent actions and decisions",
-                "Notice alignment or misalignment",
-                "Plan how to better honor your values"
-            ],
-            estimatedDuration: 10
-        )
-    ]
+    var emotionalPrompts: [EmotionalPrompt] {
+        return [
+            EmotionalPrompt(
+                title: "Three Good Things",
+                question: "What are three things that went well today, and why do you think they happened?",
+                category: .gratitude,
+                reflectionGuide: [
+                    "Think about specific moments, not general statements",
+                    "Consider your role in making these things happen",
+                    "Notice how reflecting on positive events makes you feel"
+                ],
+                icon: "heart.fill",
+                estimatedDuration: "3-5 minutes"
+            ),
+            EmotionalPrompt(
+                title: "Inner Friend",
+                question: "How would you comfort a dear friend experiencing what you're going through right now?",
+                category: .selfCompassion,
+                reflectionGuide: [
+                    "Use the same kind, understanding tone you'd use with a friend",
+                    "Offer yourself the same patience and encouragement",
+                    "Remember that struggling is part of the human experience"
+                ],
+                icon: "heart.circle.fill",
+                estimatedDuration: "4-6 minutes"
+            ),
+            EmotionalPrompt(
+                title: "Present Moment Awareness",
+                question: "What are you noticing in your body, mind, and environment right now?",
+                category: .mindfulness,
+                reflectionGuide: [
+                    "Scan your body for any sensations or tension",
+                    "Notice your current thoughts without judgment",
+                    "Observe your surroundings with fresh eyes"
+                ],
+                icon: "eye.fill",
+                estimatedDuration: "3-5 minutes"
+            )
+        ]
+    }
     
     let mindfulnessMoments: [MindfulnessMoment] = [
         MindfulnessMoment(
@@ -826,8 +778,8 @@ class MicroInterventionsViewModel: ObservableObject {
     }
     
     func startPromptReflection(_ prompt: EmotionalPrompt) {
-        // This would open a reflection interface
-        print("Starting reflection: \(prompt.title)")
+        // This would trigger the prompt reflection interface
+        print("Starting reflection for prompt: \(prompt.title)")
     }
     
     func startMindfulnessMoment(_ moment: MindfulnessMoment) {
@@ -843,6 +795,7 @@ class MicroInterventionsViewModel: ObservableObject {
     }
 }
 
+
 // MARK: - Preview
 struct MicroInterventionsView_Previews: PreviewProvider {
     static var previews: some View {
@@ -850,4 +803,5 @@ struct MicroInterventionsView_Previews: PreviewProvider {
             .environmentObject(ThemeManager())
     }
 }
+
 

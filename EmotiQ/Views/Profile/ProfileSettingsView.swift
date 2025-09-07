@@ -1,11 +1,10 @@
 //
-//  ProfileSettingsView.swift
+//  ProfileSettingsViews.swift
 //  EmotiQ
 //
-//  Created by Temiloluwa on 18-08-2025.
+//  Created by Temiloluwa on 11-08-2025.
 //
 
-import Foundation
 import SwiftUI
 
 // MARK: - Account & Privacy View
@@ -14,74 +13,40 @@ struct AccountPrivacyView: View {
     
     var body: some View {
         NavigationView {
-            List {
-                Section("Profile") {
-                    HStack {
-                        Image(systemName: "person.circle")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Edit Profile")
-                                .font(.subheadline)
-                            Text("Update your personal information")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Button("Edit") {
-                            viewModel.showingEditProfile = true
-                        }
-                        .font(.caption)
-                        .foregroundColor(.purple)
-                    }
-                }
+            ZStack {
+                // Background using ThemeColors
+                ThemeColors.backgroundGradient
+                    .ignoresSafeArea()
                 
-                Section("Security") {
-                    HStack {
-                        Image(systemName: "faceid")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Edit Profile
+                        FullWidthSettingsRow(
+                            icon: "person.circle",
+                            title: "Edit Profile",
+                            subtitle: "Update your personal information",
+                            action: {
+                                HapticManager.shared.selection()
+                                viewModel.showingEditProfile = true
+                            }
+                        )
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Face ID")
-                                .font(.subheadline)
-                            Text(viewModel.faceIDEnabled ? "Enabled" : "Disabled")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: Binding(
-                            get: { viewModel.faceIDEnabled },
-                            set: { _ in viewModel.toggleFaceID() }
-                        ))
+                        // Face ID
+                        FullWidthSettingsRow(
+                            icon: "faceid",
+                            title: "Face ID",
+                            subtitle: viewModel.faceIDEnabled ? "Enabled" : "Disabled",
+                            action: {
+                                HapticManager.shared.selection()
+                                viewModel.toggleFaceID()
+                            }
+                        )
                     }
-                }
-                
-                Section("Privacy") {
-                    HStack {
-                        Image(systemName: "lock.shield")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Data Privacy")
-                                .font(.subheadline)
-                            Text("Manage your data and privacy settings")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.regularMaterial)
+                    )
+                    .padding(.horizontal, 20)
                 }
             }
             .navigationTitle("Account & Privacy")
@@ -89,6 +54,14 @@ struct AccountPrivacyView: View {
         }
         .sheet(isPresented: $viewModel.showingEditProfile) {
             EditProfileView(viewModel: viewModel)
+        }
+        .alert("Face ID", isPresented: $viewModel.showingFaceIDAlert) {
+            Button("Settings") {
+                viewModel.openSettings()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text(viewModel.faceIDAlertMessage)
         }
     }
 }
@@ -99,106 +72,66 @@ struct AppSettingsView: View {
     
     var body: some View {
         NavigationView {
-            List {
-                Section("Notifications") {
-                    HStack {
-                        Image(systemName: "bell")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Push Notifications")
-                                .font(.subheadline)
-                            Text("Daily reminders and coaching tips")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: .constant(true))
-                    }
-                    
-                    HStack {
-                        Image(systemName: "chart.bar")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Weekly Reports")
-                                .font(.subheadline)
-                            Text("Get insights about your emotional journey")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: .constant(false))
-                    }
-                }
+            ZStack {
+                // Background using ThemeColors
+                ThemeColors.backgroundGradient
+                    .ignoresSafeArea()
                 
-                Section("Appearance") {
-                    HStack {
-                        Image(systemName: "moon")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Push Notifications
+                        FullWidthSettingsRow(
+                            icon: "bell",
+                            title: "Push Notifications",
+                            subtitle: OneSignalNotificationManager.shared.notificationPermissionGranted ? "Enabled" : "Disabled",
+                            action: {
+                                HapticManager.shared.selection()
+                                OneSignalService.shared.requestNotificationPermission()
+                            }
+                        )
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Dark Mode")
-                                .font(.subheadline)
-                            Text(viewModel.darkModeEnabled ? "On" : "Off")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                        // Weekly Reports
+                        FullWidthSettingsRow(
+                            icon: "chart.bar",
+                            title: "Weekly Reports",
+                            subtitle: "Get insights about your emotional journey",
+                            action: { }
+                        )
                         
-                        Spacer()
+                        // Dark Mode
+                        FullWidthSettingsRow(
+                            icon: "moon",
+                            title: "Dark Mode",
+                            subtitle: viewModel.darkModeEnabled ? "On" : "Off",
+                            action: {
+                                HapticManager.shared.selection()
+                                viewModel.toggleDarkMode()
+                            }
+                        )
                         
-                        Toggle("", isOn: Binding(
-                            get: { viewModel.darkModeEnabled },
-                            set: { _ in viewModel.toggleDarkMode() }
-                        ))
+                        // Recording Quality
+                        FullWidthSettingsRow(
+                            icon: "speaker.wave.2",
+                            title: "Recording Quality",
+                            subtitle: "High quality audio analysis",
+                            action: { }
+                        )
+                        
+                        // Noise Reduction
+                        FullWidthSettingsRow(
+                            icon: "waveform",
+                            title: "Noise Reduction",
+                            subtitle: "Improve voice analysis accuracy",
+                            action: { }
+                        )
+                        
+
                     }
-                }
-                
-                Section("Audio") {
-                    HStack {
-                        Image(systemName: "speaker.wave.2")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Recording Quality")
-                                .font(.subheadline)
-                            Text("High quality audio analysis")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Text("High")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Image(systemName: "waveform")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Noise Reduction")
-                                .font(.subheadline)
-                            Text("Improve voice analysis accuracy")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: .constant(true))
-                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.regularMaterial)
+                    )
+                    .padding(.horizontal, 20)
                 }
             }
             .navigationTitle("App Settings")
@@ -213,94 +146,37 @@ struct SupportInfoView: View {
     
     var body: some View {
         NavigationView {
-            List {
-                Section("Help & Support") {
-                    Button(action: { viewModel.openSupport() }) {
-                        HStack {
-                            Image(systemName: "questionmark.circle")
-                                .foregroundColor(.purple)
-                                .frame(width: 24)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Contact Support")
-                                    .font(.subheadline)
-                                    .foregroundColor(.primary)
-                                Text("Get help with any issues")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Image(systemName: "envelope")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
-                    }
-                    
-                    Button(action: { viewModel.openPrivacyPolicy() }) {
-                        HStack {
-                            Image(systemName: "doc.text")
-                                .foregroundColor(.purple)
-                                .frame(width: 24)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Privacy Policy")
-                                    .font(.subheadline)
-                                    .foregroundColor(.primary)
-                                Text("Read our privacy policy")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Image(systemName: "arrow.up.right")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
-                    }
-                }
+            ZStack {
+                // Background using ThemeColors
+                ThemeColors.backgroundGradient
+                    .ignoresSafeArea()
                 
-                Section("App") {
-                    Button(action: { viewModel.requestAppReview() }) {
-                        HStack {
-                            Image(systemName: "star")
-                                .foregroundColor(.purple)
-                                .frame(width: 24)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Rate EmotiQ")
-                                    .font(.subheadline)
-                                    .foregroundColor(.primary)
-                                Text("Share your experience")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Contact Support
+                        FullWidthSettingsRow(
+                            icon: "questionmark.circle",
+                            title: "Contact Support",
+                            subtitle: "Get help with any issues",
+                            action: {
+                                HapticManager.shared.selection()
+                                viewModel.openSupport()
                             }
-                            
-                            Spacer()
-                            
-                            Image(systemName: "star.fill")
-                                .foregroundColor(.yellow)
-                                .font(.caption)
-                        }
-                    }
+                        )
                     
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.purple)
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Version")
-                                .font(.subheadline)
-                            Text("1.0.0")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
+                        // Version
+                        FullWidthSettingsRow(
+                            icon: "info.circle",
+                            title: "Version",
+                            subtitle: "1.0.0",
+                            action: { }
+                        )
                     }
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.regularMaterial)
+                    )
+                    .padding(.horizontal, 20)
                 }
             }
             .navigationTitle("Support & Info")
@@ -319,3 +195,4 @@ struct ProfileSettingsViews_Previews: PreviewProvider {
         }
     }
 }
+

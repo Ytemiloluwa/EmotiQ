@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23507" systemVersion="24F74" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="BehaviorDataEntity" representedClassName="BehaviorDataEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="contextData" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="[String:Any]"/>
+        <attribute name="dayOfWeek" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="duration" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="hour" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="type" optional="YES" attributeType="String"/>
+        <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="behaviorData" inverseEntity="User"/>
+    </entity>
+    <entity name="EmotionalDataEntity" representedClassName="EmotionalDataEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="confidence" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="contextData" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="[String:Any]"/>
+        <attribute name="dayOfWeek" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="hour" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="intensity" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="primaryEmotion" optional="YES" attributeType="String"/>
+        <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="voiceFeaturesData" optional="YES" attributeType="Binary"/>
+        <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="emotionalData" inverseEntity="User"/>
+    </entity>
+    <entity name="NotificationEngagementEntity" representedClassName="NotificationEngagementEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="actualEngagementTime" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="delayMinutes" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="emotion" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="intervention" optional="YES" attributeType="String"/>
+        <attribute name="scheduledTime" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="wasEngaged" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="notificationEngagements" inverseEntity="User"/>
+    </entity>
+    <entity name="User" representedClassName="User" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dailyCheckInsUsed" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastCheckInDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="subscriptionStatus" optional="YES" attributeType="String"/>
+        <relationship name="behaviorData" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="BehaviorDataEntity" inverseName="user" inverseEntity="BehaviorDataEntity"/>
+        <relationship name="emotionalData" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="EmotionalDataEntity" inverseName="user" inverseEntity="EmotionalDataEntity"/>
+        <relationship name="notificationEngagements" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="NotificationEngagementEntity" inverseName="user" inverseEntity="NotificationEngagementEntity"/>
+    </entity>
+</model>

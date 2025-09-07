@@ -155,7 +155,7 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
         )
     }
     
-    private func convertEmotionCategoryToType(_ category: EmotionCategory) -> EmotionType {
+    func convertEmotionCategoryToType(_ category: EmotionCategory) -> EmotionType {
         switch category {
         case .joy: return .joy
         case .sadness: return .sadness
@@ -223,11 +223,7 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
         )
     }
     
-    /// Creates voice features from speech analysis result
-    /// PRODUCTION: Uses real speech analysis data, not hardcoded values
     private func createVoiceFeaturesFromSpeech(_ speechResult: SpeechEmotionResult) -> VoiceFeatures? {
-        // PRODUCTION: Extract real features from speech analysis result
-        // Since we don't have real-time audio processing yet, we derive features from speech content
         
         return nil
         

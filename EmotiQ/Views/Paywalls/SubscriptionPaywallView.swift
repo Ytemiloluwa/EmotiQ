@@ -12,12 +12,10 @@ import RevenueCat
 struct SubscriptionPaywallView: View {
     @StateObject private var viewModel = SubscriptionPaywallViewModel()
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedTier: SubscriptionStatus = .premium
     
     var body: some View {
-        NavigationView {
             ZStack {
-                // Background gradient
+            // Background gradient - covers entire view
                 LinearGradient(
                     colors: [
                         Color(hex: Config.UI.primaryPurple),
@@ -27,80 +25,78 @@ struct SubscriptionPaywallView: View {
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Custom navigation bar
+                HStack {
+                    Spacer()
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.trailing, 20)
+                    .padding(.top, 10)
+                }
                 
                 ScrollView {
-                    VStack(spacing: 32) {
+                    VStack(spacing: 24) {
                         // Header
                         VStack(spacing: 16) {
                             Image(systemName: "crown.fill")
                                 .font(.system(size: 50))
                                 .foregroundColor(.yellow)
                             
-                            Text("Unlock Your Full Potential")
-                                .font(.largeTitle)
+                            Text("Unlock EmotiQ Full Potential")
+                                .font(.title)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
                                 .multilineTextAlignment(.center)
-                                .padding()
                             
-                            Text("Get unlimited voice check-ins and advanced emotional insights")
+                            Text("Track your emotions with unlimited access")
                                 .font(.subheadline)
                                 .foregroundColor(.white.opacity(0.8))
                                 .multilineTextAlignment(.center)
                         }
                         .padding(.top, 20)
                         
-                        // Features List
-                        VStack(spacing: 16) {
-                            FeatureRowView(
-                                icon: "infinity",
-                                title: "Unlimited Voice Check-ins",
-                                description: "No daily limits on emotional analysis"
-                            )
-                            
-                            FeatureRowView(
-                                icon: "brain.head.profile",
-                                title: "Advanced AI Coaching",
-                                description: "Personalized insights and recommendations"
-                            )
-                            
-                            FeatureRowView(
-                                icon: "waveform.path",
-                                title: "Voice Affirmations",
-                                description: "Personalized affirmations in your own voice"
-                            )
-                            
-                            FeatureRowView(
-                                icon: "chart.line.uptrend.xyaxis",
-                                title: "Detailed Analytics",
-                                description: "Track your emotional patterns over time"
-                            )
-                        }
-                        .padding(.horizontal, 24)
-                        
-                        // Subscription Plans
+                        // Subscription Plans with Integrated Features
                         VStack(spacing: 16) {
                             Text("Choose Your Plan")
                                 .font(.title2)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
                             
-                            VStack(spacing: 12) {
-                                // Premium Plan
-                                SubscriptionPlanView(
-                                    tier: .premium,
-                                    isSelected: selectedTier == .premium,
-                                    isPopular: true,
-                                    onTap: { selectedTier = .premium }
-                                )
-                                
-                                // Pro Plan
-                                SubscriptionPlanView(
-                                    tier: .pro,
-                                    isSelected: selectedTier == .pro,
-                                    isPopular: false,
-                                    onTap: { selectedTier = .pro }
-                                )
+                            if let offerings = viewModel.offerings?.current, !offerings.availablePackages.isEmpty {
+                                VStack(spacing: 12) {
+                                    ForEach(offerings.availablePackages, id: \.identifier) { package in
+                                        PackageCardView(
+                                            package: package,
+                                            isSelected: viewModel.selectedPackage?.identifier == package.identifier,
+                                            onTap: { viewModel.selectedPackage = package }
+                                        )
+                                    }
+                                }
+                            } else if let allOfferings = viewModel.offerings?.all.values,
+                                      let firstOffering = allOfferings.first(where: { !$0.availablePackages.isEmpty }) {
+                                VStack(spacing: 12) {
+                                    ForEach(firstOffering.availablePackages, id: \.identifier) { package in
+                                        PackageCardView(
+                                            package: package,
+                                            isSelected: viewModel.selectedPackage?.identifier == package.identifier,
+                                            onTap: { viewModel.selectedPackage = package }
+                                        )
+                                    }
+                                }
+                            } else {
+                                // Loading state
+                                VStack(spacing: 12) {
+                                    ForEach(0..<2, id: \.self) { _ in
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .fill(Color.white.opacity(0.1))
+                                            .frame(height: 120)
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 24)
@@ -112,9 +108,11 @@ struct SubscriptionPaywallView: View {
                                     .font(.headline)
                                     .foregroundColor(.white)
                                 
-                                Text("7 days free, then \(selectedTier.monthlyPrice)/month")
+                                if let selectedPackage = viewModel.selectedPackage {
+                                    Text("7 days free, then \(selectedPackage.storeProduct.localizedPriceString)/month")
                                     .font(.subheadline)
                                     .foregroundColor(.white.opacity(0.8))
+                                }
                             }
                             .padding()
                             .background(
@@ -126,7 +124,7 @@ struct SubscriptionPaywallView: View {
                         
                         // Purchase Button
                         Button(action: {
-                            viewModel.purchaseSubscription(selectedTier)
+                            viewModel.purchaseSelectedPackage()
                         }) {
                             HStack {
                                 if viewModel.isLoading {
@@ -134,7 +132,7 @@ struct SubscriptionPaywallView: View {
                                         .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: Config.UI.primaryPurple)))
                                         .scaleEffect(0.8)
                                 } else {
-                                    Text(viewModel.isTrialEligible ? "Start Free Trial" : "Subscribe Now")
+                                    Text(viewModel.purchaseButtonTitle)
                                         .font(.headline)
                                         .fontWeight(.semibold)
                                 }
@@ -145,7 +143,14 @@ struct SubscriptionPaywallView: View {
                             .background(Color.white)
                             .cornerRadius(28)
                         }
-                        .disabled(viewModel.isLoading)
+                        .disabled(viewModel.isLoading || viewModel.selectedPackage == nil)
+                        .padding(.horizontal, 24)
+                        
+                        // Apple-required disclosure
+                        Text("Subscription auto‑renews unless canceled at least 24 hours before the end of the current period. Manage or cancel in Account Settings after purchase.")
+                            .font(.caption2)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white.opacity(0.8))
                         .padding(.horizontal, 24)
                         
                         // Secondary Actions
@@ -158,7 +163,7 @@ struct SubscriptionPaywallView: View {
                             .disabled(viewModel.isLoading)
                             
                             HStack(spacing: 20) {
-                                Button("Terms of Service") {
+                                Button("Terms of Use") {
                                     viewModel.openTermsOfService()
                                 }
                                 
@@ -173,22 +178,15 @@ struct SubscriptionPaywallView: View {
                     }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                    .foregroundColor(.white)
-                }
-            }
         }
         .alert("Purchase Successful", isPresented: $viewModel.showSuccessAlert) {
             Button("Continue") {
                 dismiss()
             }
         } message: {
-            Text("Welcome to EmotiQ \(selectedTier.displayName)! Enjoy unlimited access to all features.")
+            if let package = viewModel.selectedPackage {
+                Text("Welcome to EmotiQ! Enjoy your \(package.storeProduct.localizedTitle).")
+            }
         }
         .alert("Error", isPresented: $viewModel.showError) {
             Button("OK") { }
@@ -199,71 +197,52 @@ struct SubscriptionPaywallView: View {
             viewModel.loadOfferings()
             viewModel.checkTrialEligibility()
         }
-        .onChange(of: viewModel.purchaseCompleted) { completed in
-            if completed {
+        .onChange(of: viewModel.purchaseCompleted) { oldValue, newValue in
+            if newValue {
+                // Refresh subscription status immediately after successful purchase
+                Task {
+                    await refreshSubscriptionStatus()
+                }
                 dismiss()
             }
         }
     }
-}
-
-struct FeatureRowView: View {
-    let icon: String
-    let title: String
-    let description: String
     
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                
-                Text(description)
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.8))
-            }
-            
-            Spacer()
+    // MARK: - Helper Functions
+    private func refreshSubscriptionStatus() async {
+        // Force refresh subscription status to immediately unlock features
+        if let subscriptionService = viewModel.subscriptionService as? SubscriptionService {
+            await subscriptionService.refreshSubscriptionStatus()
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.2))
-        )
     }
 }
 
-struct SubscriptionPlanView: View {
-    let tier: SubscriptionStatus
+// MARK: - Package Card View
+struct PackageCardView: View {
+    let package: RevenueCat.Package
     let isSelected: Bool
-    let isPopular: Bool
     let onTap: () -> Void
     
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 12) {
-                // Header with popular badge
+            VStack(spacing: 16) {
+                // Header with title and price
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(tier.displayName)
+                        Text(package.storeProduct.localizedTitle)
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundColor(isSelected ? Color(hex: Config.UI.primaryPurple) : .white)
                         
-                        Text(tier.monthlyPrice + "/month")
+                        Text(package.storeProduct.localizedPriceString + "/month")
                             .font(.headline)
                             .foregroundColor(isSelected ? Color(hex: Config.UI.primaryPurple) : .white.opacity(0.8))
                     }
                     
                     Spacer()
                     
-                    if isPopular {
+                    // Popular badge for Premium
+                    if package.storeProduct.productIdentifier.contains("pro") {
                         Text("POPULAR")
                             .font(.caption)
                             .fontWeight(.bold)
@@ -275,9 +254,9 @@ struct SubscriptionPlanView: View {
                     }
                 }
                 
-                // Features
+                // Features based on package
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(tier.features, id: \.self) { feature in
+                    ForEach(getFeaturesForPackage(package), id: \.self) { feature in
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.caption)
@@ -308,10 +287,33 @@ struct SubscriptionPlanView: View {
         .scaleEffect(isSelected ? 1.02 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
+    
+    private func getFeaturesForPackage(_ package: RevenueCat.Package) -> [String] {
+        let productId = package.storeProduct.productIdentifier
+        
+        if productId.contains("premium") {
+            return [
+                "Unlimited voice check-ins",
+                "Voice cloning",
+                "Goal setting & tracking",
+                "Advanced analytics"
+            ]
+        } else if productId.contains("pro") {
+            return [
+                "Everything in Premium",
+                "Data export capabilities",
+                "Priority customer support",
+                "Early access to new features"
+            ]
+        }
+        
+        return []
+    }
 }
 
 // MARK: - ViewModel
 
+@MainActor
 class SubscriptionPaywallViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var showError = false
@@ -323,75 +325,102 @@ class SubscriptionPaywallViewModel: ObservableObject {
     
     // Testing
     
-    @Published var currentOffering: Offering?
-    @Published var premiumPackage: Package?
-    @Published var proPackage: Package?
+    @Published var selectedPackage: Package?
     
     // SANBOX testing //
     
     private let revenueCatService: RevenueCatServiceProtocol
-    private let subscriptionService: SubscriptionServiceProtocol
+    let subscriptionService: SubscriptionServiceProtocol
     private var cancellables = Set<AnyCancellable>()
     
-    init(revenueCatService: RevenueCatServiceProtocol = RevenueCatService(),
+    init(revenueCatService: RevenueCatServiceProtocol = RevenueCatService.shared,
          subscriptionService: SubscriptionServiceProtocol = SubscriptionService()) {
         self.revenueCatService = revenueCatService
         self.subscriptionService = subscriptionService
     }
-    // SANBOX testing //
     
-//    func loadOfferings() {
-//        isLoading = true
-//        
-//        Purchases.shared.getOfferings { [weak self] offerings, error in
-//            DispatchQueue.main.async {
-//                self?.isLoading = false
-//                
-//                if let error = error {
-//                    self?.showError(message: "Failed to load subscription options: \(error.localizedDescription)")
-//                    return
-//                }
-//                
-//                guard let offering = offerings?.current else {
-//                    self?.showError(message: "No subscription options available")
-//                    return
-//                }
-//                
-//                self?.currentOffering = offering
-//                self?.premiumPackage = offering.package(identifier: "premium_monthly")
-//                self?.proPackage = offering.package(identifier: "pro_monthly")
-//                
-//                if Config.isDebugMode {
-//                    print("✅ Offerings loaded successfully")
-//                    print("Premium package: \(self?.premiumPackage?.storeProduct.localizedTitle ?? "nil")")
-//                    print("Pro package: \(self?.proPackage?.storeProduct.localizedTitle ?? "nil")")
-//                }
-//            }
-//        }
-//    }
+    var purchaseButtonTitle: String {
+        if isTrialEligible {
+            return "Subscribe"
+        }
+        return "Subscribe"
+    }
+    
     // SANBOX testing //
     
     func loadOfferings() {
         isLoading = true
         
-        revenueCatService.getOfferings()
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { [weak self] completion in
-                    self?.isLoading = false
-                    if case .failure(let error) = completion {
-                        self?.showError(message: error.localizedDescription)
-                    }
-                },
-                receiveValue: { [weak self] offerings in
-                    self?.offerings = offerings
+        if Config.isDebugMode {
+            print("📦 SubscriptionPaywallView: Loading offerings...")
+        }
+        
+        // Use Task to handle async operations properly
+        Task {
+            do {
+                let offerings = try await revenueCatService.getOfferings()
+                
+                await MainActor.run {
+                    self.offerings = offerings
+                    self.isLoading = false
                     
                     if Config.isDebugMode {
                         print("📦 Loaded \(offerings.all.count) subscription offerings")
+                        print("📦 Current offering: \(offerings.current?.identifier ?? "nil")")
+                        print("📦 Available packages: \(offerings.current?.availablePackages.count ?? 0)")
+                        
+                        // Debug all offerings
+                        for (key, offering) in offerings.all {
+                            print("📦 Offering '\(key)': \(offering.availablePackages.count) packages")
+                            for package in offering.availablePackages {
+                                print("   - \(package.identifier): \(package.storeProduct.productIdentifier) (\(package.storeProduct.localizedPriceString))")
+                            }
+                        }
+                    }
+                    
+                    // Auto-select the first package from any offering
+                    if let firstPackage = offerings.current?.availablePackages.first {
+                        self.selectedPackage = firstPackage
+                        if Config.isDebugMode {
+                            print("✅ Auto-selected first package: \(firstPackage.storeProduct.localizedTitle)")
+                        }
+                    } else if let firstOffering = offerings.all.values.first,
+                              let firstPackage = firstOffering.availablePackages.first {
+                        self.selectedPackage = firstPackage
+                        if Config.isDebugMode {
+                            print("✅ Auto-selected from first offering: \(firstPackage.storeProduct.localizedTitle)")
+                        }
+                    } else {
+                        if Config.isDebugMode {
+                            print("❌ No packages found in any offering")
+                        }
                     }
                 }
-            )
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    
+                    if Config.isDebugMode {
+                        print("❌ SubscriptionPaywallView: Failed to load offerings: \(error)")
+                    }
+                    
+                    // If it's a configuration error, try to configure and retry once
+                    if error.localizedDescription.contains("Failed to load subscription options") {
+                        if Config.isDebugMode {
+                            print("🔄 SubscriptionPaywallView: Attempting to configure and retry...")
+                        }
+                        
+                        // Small delay then retry
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                            self.loadOfferings()
+                        }
+                    } else {
+                        self.showError(message: error.localizedDescription)
+                    }
+                }
+            }
+        }
     }
     
     func checkTrialEligibility() {
@@ -414,16 +443,16 @@ class SubscriptionPaywallViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func purchaseSubscription(_ tier: SubscriptionStatus) {
-        guard tier != .free else { return }
+    func purchaseSelectedPackage() {
+        guard let package = selectedPackage else { return }
         
         isLoading = true
         
         if Config.isDebugMode {
-            print("🛒 Attempting to purchase: \(tier.displayName) (\(tier.monthlyPrice))")
+            print("🛒 Attempting to purchase: \(package.storeProduct.localizedTitle) (\(package.storeProduct.localizedPriceString))")
         }
         
-        revenueCatService.purchaseProduct(tier.productIdentifier)
+        revenueCatService.purchaseProduct(package.storeProduct.productIdentifier)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
@@ -437,9 +466,14 @@ class SubscriptionPaywallViewModel: ObservableObject {
                         self?.showSuccessAlert = true
                         self?.purchaseCompleted = true
                         
+                        // Refresh subscription status immediately after successful purchase
+                        Task {
+                            await self?.refreshSubscriptionStatus()
+                        }
+                        
                         // Track purchase for analytics
                         if Config.isDebugMode {
-                            print("✅ Purchase completed successfully: \(tier.displayName)")
+                            print("✅ Purchase completed successfully: \(package.storeProduct.localizedTitle)")
                         }
                     } else {
                         self?.showError(message: "Purchase failed. Please try again.")
@@ -470,6 +504,11 @@ class SubscriptionPaywallViewModel: ObservableObject {
                         self?.showSuccessAlert = true
                         self?.purchaseCompleted = true
                         
+                        // Refresh subscription status immediately after successful restore
+                        Task {
+                            await self?.refreshSubscriptionStatus()
+                        }
+                        
                         if Config.isDebugMode {
                             print("✅ Purchases restored successfully")
                         }
@@ -482,13 +521,16 @@ class SubscriptionPaywallViewModel: ObservableObject {
     }
     
     func openTermsOfService() {
-        if let url = URL(string: "https://emotiq.app/terms") {
+        if let url = URL(string: "https://ytemiloluwa.github.io/Term-of-use.html") {
             UIApplication.shared.open(url)
+        }
+        if Config.isDebugMode {
+            print("📄 Opening terms of service")
         }
     }
     
     func openPrivacyPolicy() {
-        if let url = URL(string: "https://emotiq.app/privacy") {
+        if let url = URL(string: "https://ytemiloluwa.github.io/privacy-policy.html") {
             UIApplication.shared.open(url)
         }
     }
@@ -501,8 +543,25 @@ class SubscriptionPaywallViewModel: ObservableObject {
             print("❌ Subscription Error: \(message)")
         }
     }
+    
+    // MARK: - Helper Functions
+    private func refreshSubscriptionStatus() async {
+        // Force refresh subscription status to immediately unlock features
+        if let subscriptionService = subscriptionService as? SubscriptionService {
+            await subscriptionService.refreshSubscriptionStatus()
+        }
+    }
 }
 
 #Preview {
     SubscriptionPaywallView()
+        .environment(\.colorScheme, .light)
+       // .previewDisplayName("Light Mode")
 }
+
+#Preview {
+    SubscriptionPaywallView()
+        .environment(\.colorScheme, .dark)
+       // .previewDisplayName("Dark Mode")
+}
+
