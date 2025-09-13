@@ -173,8 +173,11 @@ class OneSignalNotificationManager: ObservableObject {
                     
                     // Add a small delay to prevent alert conflicts
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if !(self?.showingNotificationSettingsAlert ?? false) {
-                            self?.showingNotificationSettingsAlert = true
+                        Task { @MainActor in
+                            
+                            if !(self?.showingNotificationSettingsAlert ?? false) {
+                                self?.showingNotificationSettingsAlert = true
+                            }
                         }
                     }
                 } else {
@@ -234,9 +237,12 @@ class OneSignalNotificationManager: ObservableObject {
                     // OneSignal is ready but user hasn't opted in - show settings alert
                     // Add a small delay to prevent alert conflicts
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        if !(self?.showingNotificationSettingsAlert ?? false) {
-                            self?.showingNotificationSettingsAlert = true
+                        Task { @MainActor in
+                            if !(self?.showingNotificationSettingsAlert ?? false) {
+                                self?.showingNotificationSettingsAlert = true
+                            }
                         }
+
                     }
                     
                 }

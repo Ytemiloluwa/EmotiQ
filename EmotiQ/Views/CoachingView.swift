@@ -177,7 +177,7 @@ struct QuickActionsSection: View {
                 // Enhanced Personal Coaching with Voice Integration
                 VoiceQuickActionCard(
                     title: "Personal Coaching",
-                    description: hasVoiceProfile ? "Your voice guided Coaching" : "Emotional coaching in your own voice",
+                    description: hasVoiceProfile ? "Listen to Affirmations in your voice" : "Emotional coaching in your own voice",
                     icon: hasVoiceProfile ? "waveform.circle.fill" : "waveform.circle",
                     color: .purple,
                     hasVoiceFeature: true,
