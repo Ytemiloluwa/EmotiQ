@@ -54,7 +54,7 @@ class CoreMLEmotionService: ObservableObject {
     /// - Parameter audioURL: URL to the .m4a audio file
     /// - Returns: EmotionAnalysisResult with confidence scores for all emotion categories
     func analyzeEmotion(from audioURL: URL) async throws -> EmotionAnalysisResult {
-        print("🎤 Starting emotion analysis for: \(audioURL.lastPathComponent)")
+       
         
         isAnalyzing = true
         defer { isAnalyzing = false }
@@ -66,9 +66,9 @@ class CoreMLEmotionService: ObservableObject {
             }
             
             // 1. Load and convert .m4a to PCM samples
-            print("📁 Loading audio file...")
+            
             let audioSamples = try await loadAudioSamples(from: audioURL)
-            print("✅ Loaded \(audioSamples.count) audio samples")
+      
             
             // Validate audio quality
             guard audioSamples.count > 0 else {
@@ -76,26 +76,25 @@ class CoreMLEmotionService: ObservableObject {
             }
             
             // 2. Extract MFCC features using Accelerate framework
-            print("🔬 Extracting MFCC features...")
+        
             let mfccFeatures = try audioProcessor.extractMFCCFeatures(from: audioSamples, sampleRate: Config.sampleRate)
-            print("✅ Extracted \(mfccFeatures.count) MFCC coefficients")
+            
             
             // 3. Extract additional audio features
-            print("📊 Extracting additional features...")
+         
             let audioFeatures = try audioProcessor.extractAudioFeatures(from: audioSamples, sampleRate: Config.sampleRate)
-            print("✅ Extracted audio features: pitch=\(audioFeatures.pitch), energy=\(audioFeatures.energy)")
+            
             
             // 4. Combine all features into feature vector
             let featureVector = createFeatureVector(mfcc: mfccFeatures, audioFeatures: audioFeatures)
-            print("🎯 Created feature vector with \(featureVector.count) dimensions")
+          
             
             // 5. Run dual-channel emotion analysis (Speech + Voice)
-            print("🧠 Running dual-channel emotion analysis...")
+      
             let emotionScores = try await runDualChannelAnalysis(
                 audioURL: audioURL,
                 featureVector: featureVector
             )
-            print("✅ Got emotion predictions: \(emotionScores)")
             
             // 6. Validate results
             guard !emotionScores.isEmpty else {
@@ -116,16 +115,16 @@ class CoreMLEmotionService: ObservableObject {
             lastAnalysisResult = result
             analysisError = nil
             
-            print("🎉 Emotion analysis completed successfully")
+           
             return result
             
         } catch let error as EmotionAnalysisError {
-            print("❌ Emotion analysis error: \(error.localizedDescription)")
+      
             logAnalysisError(error: error, audioURL: audioURL)
             analysisError = error
             throw error
         } catch {
-            print("❌ Unexpected error: \(error.localizedDescription)")
+           
             let unexpectedError = EmotionAnalysisError.analysisFailure(error.localizedDescription)
             logAnalysisError(error: unexpectedError, audioURL: audioURL)
             self.analysisError = unexpectedError
@@ -141,13 +140,13 @@ class CoreMLEmotionService: ObservableObject {
                 // Try to load custom trained model first
                 if let modelURL = Bundle.main.url(forResource: Config.modelName, withExtension: "mlmodelc") {
                     model = try MLModel(contentsOf: modelURL)
-                    print("✅ Loaded custom emotion model: \(Config.modelName)")
+                
                 } else {
                     // PRODUCTION: No custom model available - will use advanced heuristic analysis
-                    print("⚠️ Custom model not found, will use advanced heuristic analysis")
+                    
                 }
             } catch {
-                print("❌ Failed to load emotion model: \(error)")
+               
                 await MainActor.run {
                     self.analysisError = EmotionAnalysisError.modelNotLoaded
                 }
@@ -502,7 +501,7 @@ class CoreMLEmotionService: ObservableObject {
         // Check for reasonable value ranges
         for (index, value) in featureVector.enumerated() {
             if abs(value) > 1000.0 { // Reasonable upper bound for audio features
-                print("⚠️ Feature at index \(index) has unusually high value: \(value)")
+               
             }
         }
     }
@@ -519,7 +518,7 @@ class CoreMLEmotionService: ObservableObject {
         var speechAnalysisSucceeded = false
         
         do {
-            print("🎤 Starting speech-to-text analysis...")
+            
             
             // Ensure audio session is properly configured for speech recognition
             try await configureAudioSessionForSpeechRecognition()
@@ -531,16 +530,15 @@ class CoreMLEmotionService: ObservableObject {
             speechEmotionScores = speechResult.emotionScores
             speechConfidence = speechResult.confidence
             speechAnalysisSucceeded = true
-            print("✅ Speech analysis completed. Primary: \(speechResult.primaryEmotion), Confidence: \(speechConfidence)")
+       
         } catch {
-            print("⚠️ Speech analysis failed: \(error.localizedDescription)")
-            print("🔄 Falling back to voice-only analysis...")
+           
         }
         
         // Channel 2: Voice-based DSP Analysis (Fallback)
         let voiceEmotionScores = generateEmotionScoresFromFeatures(featureVector: featureVector)
         let voiceConfidence = calculateVoiceConfidence(emotionScores: voiceEmotionScores)
-        print("✅ Voice analysis completed. Confidence: \(voiceConfidence)")
+      
         
         // Fusion Logic: Combine or choose best analysis
         return fuseEmotionAnalysis(
@@ -564,7 +562,7 @@ class CoreMLEmotionService: ObservableObject {
             return try await runCoreMLInference(model: model, featureVector: featureVector)
         } else {
             // PRODUCTION: Use advanced heuristic-based analysis when no CoreML model is available
-            print("🧠 Using advanced heuristic-based emotion analysis")
+ 
             return generateEmotionScoresFromFeatures(featureVector: featureVector)
         }
     }
@@ -696,7 +694,7 @@ class CoreMLEmotionService: ObservableObject {
         // Check if we should reject low-confidence predictions
         let maxScore = emotionScores.values.max() ?? 0.0
         if shouldRejectLowConfidencePrediction(maxScore) {
-            print("⚠️ Low confidence prediction detected (\(maxScore)), defaulting to neutral")
+
             emotionScores = [.neutral: 1.0]
             return emotionScores
         }
@@ -1333,17 +1331,17 @@ class CoreMLEmotionService: ObservableObject {
         let voiceConfidenceThreshold: Double = 0.5
         let combinationThreshold: Double = 0.4
         
-        print("🔀 Fusing emotion analysis - Speech: \(speechConfidence), Voice: \(voiceConfidence)")
+
         
         // Case 1: Speech analysis failed - use voice only
         guard speechSucceeded else {
-            print("📊 Using voice-only analysis (speech failed)")
+    
             return voiceScores
         }
         
         // Case 2: High confidence speech analysis - prioritize speech
         if speechConfidence >= speechConfidenceThreshold {
-            print("📊 Using speech-primary analysis (high speech confidence: \(speechConfidence))")
+          
             return combineScores(
                 primary: speechScores, primaryWeight: 0.8,
                 secondary: voiceScores, secondaryWeight: 0.2
@@ -1352,7 +1350,7 @@ class CoreMLEmotionService: ObservableObject {
         
         // Case 3: High confidence voice analysis, low speech confidence - prioritize voice
         if voiceConfidence >= voiceConfidenceThreshold && speechConfidence < combinationThreshold {
-            print("📊 Using voice-primary analysis (high voice confidence: \(voiceConfidence))")
+        
             return combineScores(
                 primary: voiceScores, primaryWeight: 0.7,
                 secondary: speechScores, secondaryWeight: 0.3
@@ -1361,7 +1359,7 @@ class CoreMLEmotionService: ObservableObject {
         
         // Case 4: Both have reasonable confidence - balanced combination
         if speechConfidence >= combinationThreshold && voiceConfidence >= combinationThreshold {
-            print("📊 Using balanced combination (Speech: \(speechConfidence), Voice: \(voiceConfidence))")
+
             
             // Dynamic weighting based on relative confidence
             let totalConfidence = speechConfidence + voiceConfidence
@@ -1375,7 +1373,7 @@ class CoreMLEmotionService: ObservableObject {
         }
         
         // Case 5: Both have low confidence - fallback to voice with warning
-        print("⚠️ Both analyses have low confidence - using voice analysis as fallback")
+        
         return voiceScores
     }
     
@@ -1537,11 +1535,11 @@ class CoreMLEmotionService: ObservableObject {
     // MARK: - Logging and Error Handling
     
     private func logAnalysisCompletion(result: EmotionAnalysisResult, audioURL: URL) {
-        print("✅ Emotion analysis completed for \(audioURL.lastPathComponent). Primary emotion: \(result.primaryEmotion.rawValue) with confidence: \(result.confidence)")
+
     }
     
     private func logAnalysisError(error: EmotionAnalysisError, audioURL: URL) {
-        print("❌ Emotion analysis failed for \(audioURL.lastPathComponent) with error: \(error.localizedDescription)")
+ 
         analysisError = error
     }
 }

@@ -79,18 +79,10 @@ class AffirmationEngine: ObservableObject {
                 
             } catch ElevenLabsError.noVoiceProfile {
                 // User needs to set up voice cloning - log for debugging
-                if Config.isDebugMode {
-                    print("🔧 Voice profile required for affirmation: \(affirmation.text)")
-                    print("💡 User needs to set up voice cloning in Coaching section")
-                }
                 throw ElevenLabsError.noVoiceProfile
                 
             } catch {
-                // Other errors - log for debugging
-                if Config.isDebugMode {
-                    print("⚠️ Voice generation failed for affirmation: \(affirmation.text)")
-                    print("❌ Error: \(error)")
-                }
+
                 throw error
             }
         }
@@ -152,16 +144,9 @@ class AffirmationEngine: ObservableObject {
                 voiceAffirmations.append(voiceAffirmation)
                 
             } catch ElevenLabsError.noVoiceProfile {
-                if Config.isDebugMode {
-                    print("🔧 Voice profile required for category affirmation: \(affirmation.text)")
-                }
                 throw ElevenLabsError.noVoiceProfile
                 
             } catch {
-                if Config.isDebugMode {
-                    print("⚠️ Voice generation failed for category affirmation: \(affirmation.text)")
-                    print("❌ Error: \(error)")
-                }
                 throw error
             }
         }
@@ -196,18 +181,10 @@ class AffirmationEngine: ObservableObject {
                 stability: 0.8
             )
         } catch ElevenLabsError.noVoiceProfile {
-            // User needs to set up voice cloning - log for debugging
-            if Config.isDebugMode {
-                print("🔧 Voice profile required for custom affirmation: \(enhancedText)")
-                print("💡 User needs to set up voice cloning in Coaching section")
-            }
+
             throw ElevenLabsError.noVoiceProfile
         } catch {
-            // Other errors - log for debugging
-            if Config.isDebugMode {
-                print("⚠️ Voice generation failed for custom affirmation: \(enhancedText)")
-                print("❌ Error: \(error)")
-            }
+
             throw error
         }
         
@@ -532,42 +509,6 @@ class AffirmationEngine: ObservableObject {
     
     // MARK: - Notification Scheduling
     
-    /// Schedule affirmation delivery notifications
-//    private func scheduleAffirmationNotifications(_ affirmations: [PersonalizedAffirmation]) {
-//        let center = UNUserNotificationCenter.current()
-//
-//        // Remove existing affirmation notifications
-//        center.removePendingNotificationRequests(withIdentifiers: affirmations.map { "affirmation_\($0.id)" })
-//
-//        // Schedule new notifications
-//        for (index, affirmation) in affirmations.enumerated() {
-//            let content = UNMutableNotificationContent()
-//            content.title = "Your Daily Affirmation"
-//            content.body = affirmation.text
-//            content.sound = .default
-//            content.categoryIdentifier = "AFFIRMATION"
-//            content.userInfo = ["affirmationId": affirmation.id.uuidString]
-//
-//            // Schedule at optimal times throughout the day
-//            let hour = [8, 12, 16, 19, 21][index % 5] // Morning, noon, afternoon, evening, night
-//            var dateComponents = DateComponents()
-//            dateComponents.hour = hour
-//            dateComponents.minute = 0
-//
-//            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-//            let request = UNNotificationRequest(
-//                identifier: "affirmation_\(affirmation.id)",
-//                content: content,
-//                trigger: trigger
-//            )
-//
-//            center.add(request) { error in
-//                if let error = error {
-//                    print("Failed to schedule affirmation notification: \(error)")
-//                }
-//            }
-//        }
-//    }
     
     // MARK: - Learning and Adaptation
     
@@ -693,9 +634,6 @@ class AffirmationEngine: ObservableObject {
         
         try context.save()
         
-        if Config.isDebugMode {
-            print("✅ Saved \(affirmations.count) daily affirmations to Core Data")
-        }
     }
     
     /// Save custom affirmation to persistence
@@ -727,9 +665,6 @@ class AffirmationEngine: ObservableObject {
         
         try context.save()
         
-        if Config.isDebugMode {
-            print("✅ Saved custom affirmation: \(affirmation.text.prefix(50))...")
-        }
     }
     
     /// Update affirmation completion status
@@ -750,9 +685,6 @@ class AffirmationEngine: ObservableObject {
         
         try context.save()
         
-        if Config.isDebugMode {
-            print("✅ Updated affirmation completion status")
-        }
     }
     
     /// Save affirmation feedback
@@ -778,9 +710,7 @@ class AffirmationEngine: ObservableObject {
         
         try context.save()
         
-        if Config.isDebugMode {
-            print("✅ Saved affirmation feedback to Core Data")
-        }
+
     }
     
     /// Save successful pattern
@@ -804,10 +734,7 @@ class AffirmationEngine: ObservableObject {
         entity.user = user
         
         try context.save()
-        
-        if Config.isDebugMode {
-            print("✅ Saved successful pattern to Core Data")
-        }
+
     }
     
     /// Save unsuccessful pattern
@@ -832,9 +759,7 @@ class AffirmationEngine: ObservableObject {
         
         try context.save()
         
-        if Config.isDebugMode {
-            print("✅ Saved unsuccessful pattern to Core Data")
-        }
+
     }
     
     /// Load daily affirmations from persistence
@@ -873,14 +798,10 @@ class AffirmationEngine: ObservableObject {
                     effectiveness: Int(entity.effectivenessRating)
                 )
             }
-            
-            if Config.isDebugMode {
-                print("✅ Loaded \(dailyAffirmations.count) daily affirmations from Core Data")
-            }
+//            
+
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to load daily affirmations: \(error)")
-            }
+
             dailyAffirmations = []
         }
     }

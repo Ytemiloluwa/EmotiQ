@@ -15,21 +15,21 @@ struct AccountPrivacyView: View {
         NavigationView {
             ZStack {
                 // Background using ThemeColors
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
                     VStack(spacing: 0) {
                         // Edit Profile
-                        FullWidthSettingsRow(
-                            icon: "person.circle",
-                            title: "Edit Profile",
-                            subtitle: "Update your personal information",
-                            action: {
-                                HapticManager.shared.selection()
-                                viewModel.showingEditProfile = true
-                            }
-                        )
+//                        FullWidthSettingsRow(
+//                            icon: "person.circle",
+//                            title: "Edit Profile",
+//                            subtitle: "Update your personal information",
+//                            action: {
+//                                HapticManager.shared.selection()
+//                                viewModel.showingEditProfile = true
+//                            }
+//                        )
                         
                         // Face ID
                         FullWidthSettingsRow(
@@ -74,7 +74,7 @@ struct AppSettingsView: View {
         NavigationView {
             ZStack {
                 // Background using ThemeColors
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -90,40 +90,40 @@ struct AppSettingsView: View {
                             }
                         )
                         
-                        // Weekly Reports
-                        FullWidthSettingsRow(
-                            icon: "chart.bar",
-                            title: "Weekly Reports",
-                            subtitle: "Get insights about your emotional journey",
-                            action: { }
-                        )
-                        
-                        // Dark Mode
-                        FullWidthSettingsRow(
-                            icon: "moon",
-                            title: "Dark Mode",
-                            subtitle: viewModel.darkModeEnabled ? "On" : "Off",
-                            action: {
-                                HapticManager.shared.selection()
-                                viewModel.toggleDarkMode()
-                            }
-                        )
-                        
-                        // Recording Quality
-                        FullWidthSettingsRow(
-                            icon: "speaker.wave.2",
-                            title: "Recording Quality",
-                            subtitle: "High quality audio analysis",
-                            action: { }
-                        )
-                        
-                        // Noise Reduction
-                        FullWidthSettingsRow(
-                            icon: "waveform",
-                            title: "Noise Reduction",
-                            subtitle: "Improve voice analysis accuracy",
-                            action: { }
-                        )
+//                        // Weekly Reports
+//                        FullWidthSettingsRow(
+//                            icon: "chart.bar",
+//                            title: "Weekly Reports",
+//                            subtitle: "Get insights about your emotional journey",
+//                            action: { }
+//                        )
+//                        
+//                        // Dark Mode
+//                        FullWidthSettingsRow(
+//                            icon: "moon",
+//                            title: "Dark Mode",
+//                            subtitle: viewModel.darkModeEnabled ? "On" : "Off",
+//                            action: {
+//                                HapticManager.shared.selection()
+//                                viewModel.toggleDarkMode()
+//                            }
+//                        )
+//                        
+//                        // Recording Quality
+//                        FullWidthSettingsRow(
+//                            icon: "speaker.wave.2",
+//                            title: "Recording Quality",
+//                            subtitle: "High quality audio analysis",
+//                            action: { }
+//                        )
+//                        
+//                        // Noise Reduction
+//                        FullWidthSettingsRow(
+//                            icon: "waveform",
+//                            title: "Noise Reduction",
+//                            subtitle: "Improve voice analysis accuracy",
+//                            action: { }
+//                        )
                         
 
                     }
@@ -148,7 +148,7 @@ struct SupportInfoView: View {
         NavigationView {
             ZStack {
                 // Background using ThemeColors
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {

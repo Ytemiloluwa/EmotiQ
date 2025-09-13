@@ -26,7 +26,7 @@ struct GoalCreationView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {

@@ -33,7 +33,7 @@ struct WeeklyChartContent: View {
         VStack(spacing: 12) {
             // Chart title
             HStack {
-                Text("Average Mood by Day")
+                Text("Average mood score by day")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
@@ -83,7 +83,7 @@ struct WeeklyBarChart: View {
             }
         }
         .chartYScale(domain: 0...1)
-        .chartYAxisLabel("Average Mood Score", position: .leading)
+        //.chartYAxisLabel("Average Mood Score", position: .leading)
         .chartXAxisLabel("Days of the Week", position: .bottom)
     }
 }

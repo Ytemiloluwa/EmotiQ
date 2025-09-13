@@ -22,6 +22,7 @@ struct CoachingView: View {
     @State private var showingVoiceGuidedIntervention = false
     @State private var showingCustomAffirmationCreator = false
     @State private var showingAffirmationDetail = false
+    @State private var showingAllAffirmations = false
     
     // Data for navigation
     @State private var selectedAffirmation: PersonalizedAffirmation?
@@ -29,7 +30,7 @@ struct CoachingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -53,7 +54,7 @@ struct CoachingView: View {
                         
                         // Daily Affirmations Section
                         DailyAffirmationsSection(
-                            onViewAll: { showingAffirmations = true },
+                            onViewAll: { showingAllAffirmations = true },
                             onAffirmationDetail: { affirmation in
                                 selectedAffirmation = affirmation
                                 showingAffirmationDetail = true
@@ -78,7 +79,7 @@ struct CoachingView: View {
                 }
             }
             .navigationTitle("Coaching")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.automatic)
             
             // Navigation destinations
             .navigationDestination(isPresented: $showingGoalSetting) {
@@ -103,6 +104,9 @@ struct CoachingView: View {
                 if let affirmation = selectedAffirmation {
                     AffirmationDetailView(affirmation: affirmation)
                 }
+            }
+            .navigationDestination(isPresented: $showingAllAffirmations) {
+                AllAffirmationsView()
             }
             
             .onAppear {

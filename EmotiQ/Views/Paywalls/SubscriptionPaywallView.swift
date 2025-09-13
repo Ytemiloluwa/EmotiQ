@@ -13,6 +13,18 @@ struct SubscriptionPaywallView: View {
     @StateObject private var viewModel = SubscriptionPaywallViewModel()
     @Environment(\.dismiss) private var dismiss
     
+    // Navigation callback for post-purchase flow
+    let onPurchaseSuccess: (() -> Void)?
+    
+    init(onPurchaseSuccess: (() -> Void)? = nil) {
+        self.onPurchaseSuccess = onPurchaseSuccess
+    }
+    
+    // Default initializer for backward compatibility
+    init() {
+        self.onPurchaseSuccess = nil
+    }
+    
     var body: some View {
             ZStack {
             // Background gradient - covers entire view
@@ -148,7 +160,7 @@ struct SubscriptionPaywallView: View {
                         
                         // Apple-required disclosure
                         Text("Subscription auto‑renews unless canceled at least 24 hours before the end of the current period. Manage or cancel in Account Settings after purchase.")
-                            .font(.caption2)
+                            .font(.caption)
                             .multilineTextAlignment(.center)
                             .foregroundColor(.white.opacity(0.8))
                         .padding(.horizontal, 24)
@@ -181,7 +193,8 @@ struct SubscriptionPaywallView: View {
         }
         .alert("Purchase Successful", isPresented: $viewModel.showSuccessAlert) {
             Button("Continue") {
-                dismiss()
+                // Don't dismiss immediately - let the onChange handler handle it
+                // This ensures subscription status is refreshed first
             }
         } message: {
             if let package = viewModel.selectedPackage {
@@ -202,8 +215,16 @@ struct SubscriptionPaywallView: View {
                 // Refresh subscription status immediately after successful purchase
                 Task {
                     await refreshSubscriptionStatus()
+                    // Small delay to ensure state is updated before dismissing
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                    
+                    // Navigate to purchased features or dismiss
+                    if let onPurchaseSuccess = onPurchaseSuccess {
+                        onPurchaseSuccess()
+                    } else {
+                        dismiss()
+                    }
                 }
-                dismiss()
             }
         }
     }
@@ -213,6 +234,10 @@ struct SubscriptionPaywallView: View {
         // Force refresh subscription status to immediately unlock features
         if let subscriptionService = viewModel.subscriptionService as? SubscriptionService {
             await subscriptionService.refreshSubscriptionStatus()
+            
+            // Also refresh the main subscription service if it's different
+            await SubscriptionService.shared.refreshSubscriptionStatus()
+
         }
     }
 }
@@ -341,19 +366,15 @@ class SubscriptionPaywallViewModel: ObservableObject {
     
     var purchaseButtonTitle: String {
         if isTrialEligible {
-            return "Subscribe"
+            return "Subscribe Now"
         }
-        return "Subscribe"
+        return "Subscribe Now"
     }
-    
-    // SANBOX testing //
+
     
     func loadOfferings() {
         isLoading = true
         
-        if Config.isDebugMode {
-            print("📦 SubscriptionPaywallView: Loading offerings...")
-        }
         
         // Use Task to handle async operations properly
         Task {
@@ -364,51 +385,25 @@ class SubscriptionPaywallViewModel: ObservableObject {
                     self.offerings = offerings
                     self.isLoading = false
                     
-                    if Config.isDebugMode {
-                        print("📦 Loaded \(offerings.all.count) subscription offerings")
-                        print("📦 Current offering: \(offerings.current?.identifier ?? "nil")")
-                        print("📦 Available packages: \(offerings.current?.availablePackages.count ?? 0)")
-                        
-                        // Debug all offerings
-                        for (key, offering) in offerings.all {
-                            print("📦 Offering '\(key)': \(offering.availablePackages.count) packages")
-                            for package in offering.availablePackages {
-                                print("   - \(package.identifier): \(package.storeProduct.productIdentifier) (\(package.storeProduct.localizedPriceString))")
-                            }
-                        }
-                    }
                     
                     // Auto-select the first package from any offering
                     if let firstPackage = offerings.current?.availablePackages.first {
                         self.selectedPackage = firstPackage
-                        if Config.isDebugMode {
-                            print("✅ Auto-selected first package: \(firstPackage.storeProduct.localizedTitle)")
-                        }
+
                     } else if let firstOffering = offerings.all.values.first,
                               let firstPackage = firstOffering.availablePackages.first {
                         self.selectedPackage = firstPackage
-                        if Config.isDebugMode {
-                            print("✅ Auto-selected from first offering: \(firstPackage.storeProduct.localizedTitle)")
-                        }
+
                     } else {
-                        if Config.isDebugMode {
-                            print("❌ No packages found in any offering")
-                        }
+
                     }
                 }
             } catch {
                 await MainActor.run {
                     self.isLoading = false
                     
-                    if Config.isDebugMode {
-                        print("❌ SubscriptionPaywallView: Failed to load offerings: \(error)")
-                    }
-                    
                     // If it's a configuration error, try to configure and retry once
                     if error.localizedDescription.contains("Failed to load subscription options") {
-                        if Config.isDebugMode {
-                            print("🔄 SubscriptionPaywallView: Attempting to configure and retry...")
-                        }
                         
                         // Small delay then retry
                         Task { @MainActor in
@@ -428,16 +423,13 @@ class SubscriptionPaywallViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
-                    if case .failure(let error) = completion, Config.isDebugMode {
-                        print("❌ Failed to check trial eligibility: \(error)")
+                    if case .failure(let error) = completion {
+           
                     }
                 },
                 receiveValue: { [weak self] isEligible in
                     self?.isTrialEligible = isEligible
                     
-                    if Config.isDebugMode {
-                        print("🎁 Trial eligibility: \(isEligible ? "Eligible" : "Not eligible")")
-                    }
                 }
             )
             .store(in: &cancellables)
@@ -448,9 +440,6 @@ class SubscriptionPaywallViewModel: ObservableObject {
         
         isLoading = true
         
-        if Config.isDebugMode {
-            print("🛒 Attempting to purchase: \(package.storeProduct.localizedTitle) (\(package.storeProduct.localizedPriceString))")
-        }
         
         revenueCatService.purchaseProduct(package.storeProduct.productIdentifier)
             .receive(on: DispatchQueue.main)
@@ -466,15 +455,6 @@ class SubscriptionPaywallViewModel: ObservableObject {
                         self?.showSuccessAlert = true
                         self?.purchaseCompleted = true
                         
-                        // Refresh subscription status immediately after successful purchase
-                        Task {
-                            await self?.refreshSubscriptionStatus()
-                        }
-                        
-                        // Track purchase for analytics
-                        if Config.isDebugMode {
-                            print("✅ Purchase completed successfully: \(package.storeProduct.localizedTitle)")
-                        }
                     } else {
                         self?.showError(message: "Purchase failed. Please try again.")
                     }
@@ -485,10 +465,6 @@ class SubscriptionPaywallViewModel: ObservableObject {
     
     func restorePurchases() {
         isLoading = true
-        
-        if Config.isDebugMode {
-            print("🔄 Restoring purchases...")
-        }
         
         revenueCatService.restorePurchases()
             .receive(on: DispatchQueue.main)
@@ -504,14 +480,6 @@ class SubscriptionPaywallViewModel: ObservableObject {
                         self?.showSuccessAlert = true
                         self?.purchaseCompleted = true
                         
-                        // Refresh subscription status immediately after successful restore
-                        Task {
-                            await self?.refreshSubscriptionStatus()
-                        }
-                        
-                        if Config.isDebugMode {
-                            print("✅ Purchases restored successfully")
-                        }
                     } else {
                         self?.showError(message: "No previous purchases found to restore.")
                     }
@@ -524,9 +492,7 @@ class SubscriptionPaywallViewModel: ObservableObject {
         if let url = URL(string: "https://ytemiloluwa.github.io/Term-of-use.html") {
             UIApplication.shared.open(url)
         }
-        if Config.isDebugMode {
-            print("📄 Opening terms of service")
-        }
+
     }
     
     func openPrivacyPolicy() {
@@ -538,30 +504,27 @@ class SubscriptionPaywallViewModel: ObservableObject {
     private func showError(message: String) {
         errorMessage = message
         showError = true
-        
-        if Config.isDebugMode {
-            print("❌ Subscription Error: \(message)")
-        }
+
     }
     
-    // MARK: - Helper Functions
-    private func refreshSubscriptionStatus() async {
-        // Force refresh subscription status to immediately unlock features
-        if let subscriptionService = subscriptionService as? SubscriptionService {
-            await subscriptionService.refreshSubscriptionStatus()
-        }
-    }
 }
 
 #Preview {
     SubscriptionPaywallView()
         .environment(\.colorScheme, .light)
-       // .previewDisplayName("Light Mode")
+   
 }
 
 #Preview {
     SubscriptionPaywallView()
         .environment(\.colorScheme, .dark)
-       // .previewDisplayName("Dark Mode")
+
+}
+
+#Preview("With Navigation Callback") {
+    SubscriptionPaywallView(onPurchaseSuccess: {
+    
+    })
+        .environment(\.colorScheme, .light)
 }
 

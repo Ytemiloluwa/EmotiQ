@@ -80,10 +80,10 @@ struct EnhancedEmotionalPromptCard: View {
                                 .foregroundColor(ThemeColors.secondaryText)
                         }
                         
-                        Spacer()
+                        Spacer(minLength: 0)
                         
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption)
+                            .font(.title2)
                             .foregroundColor(ThemeColors.accent)
                             .animation(.easeInOut(duration: 0.2), value: isExpanded)
                     }
@@ -95,61 +95,50 @@ struct EnhancedEmotionalPromptCard: View {
                         .multilineTextAlignment(.leading)
                 }
                 .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
             
             // Expanded Content
             if isExpanded {
-                VStack(alignment: .leading, spacing: 12) {
-                    Divider()
-                        .background(ThemeColors.secondaryText.opacity(0.3))
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Reflection Guide:")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(ThemeColors.secondaryText)
+                Button(action: {
+                    hapticManager.impact(.light)
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isExpanded.toggle()
+                    }
+                }) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Divider()
+                            .background(ThemeColors.secondaryText.opacity(0.3))
                         
-                        ForEach(prompt.reflectionGuide, id: \.self) { guide in
-                            HStack(alignment: .top, spacing: 8) {
-                                Circle()
-                                    .fill(prompt.category.color)
-                                    .frame(width: 4, height: 4)
-                                    .padding(.top, 6)
-                                
-                                Text(guide)
-                                    .font(.caption)
-                                    .foregroundColor(ThemeColors.secondaryText)
-                                    .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Reflection Guide:")
+                                .font(.callout)
+                                .fontWeight(.semibold)
+                                .foregroundColor(ThemeColors.secondaryText)
+                            
+                            ForEach(prompt.reflectionGuide, id: \.self) { guide in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Circle()
+                                        .fill(prompt.category.color)
+                                        .frame(width: 4, height: 4)
+                                        .padding(.top, 6)
+                                    
+                                    Text(guide)
+                                        .font(.callout)
+                                        .foregroundColor(ThemeColors.secondaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                         }
                     }
-                    
-//                    HStack {
-//                        Spacer()
-//
-//                        Button("Start Reflection") {
-//                            hapticManager.impact(.medium)
-//                            viewModel.startPromptReflection(prompt.toOriginal())
-//                        }
-//                        .font(.caption)
-//                        .fontWeight(.medium)
-//                        .foregroundColor(.white)
-//                        .padding(.horizontal, 20)
-//                        .padding(.vertical, 10)
-//                        .background(
-//                            LinearGradient(
-//                                colors: [prompt.category.color, prompt.category.color.opacity(0.8)],
-//                                startPoint: .leading,
-//                                endPoint: .trailing
-//                            )
-//                        )
-//                        .clipShape(Capsule())
-//                        .shadow(color: prompt.category.color.opacity(0.3), radius: 4, x: 0, y: 2)
-//                    }
+                    .padding(.horizontal)
+                    .padding(.bottom)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal)
-                .padding(.bottom)
+                .buttonStyle(PlainButtonStyle())
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -183,7 +172,7 @@ struct AllEmotionalPromptsView: View {
     
     var body: some View {
         ZStack {
-            ThemeColors.backgroundGradient
+            ThemeColors.primaryBackground
                 .ignoresSafeArea()
             
             ScrollView {

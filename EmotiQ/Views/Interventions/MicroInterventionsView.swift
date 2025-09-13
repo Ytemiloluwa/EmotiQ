@@ -11,7 +11,7 @@ struct MicroInterventionsView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -137,7 +137,7 @@ struct QuickReliefCard: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                 
-                Text(intervention.durationText)
+                Text("\(intervention.estimatedDuration) min")
                     .font(.caption)
                     .foregroundColor(ThemeColors.secondaryText)
                 
@@ -578,7 +578,7 @@ class MicroInterventionsViewModel: ObservableObject {
             category: .mindfulness,
             icon: "hand.raised.fill",
             color: .green,
-            estimatedDuration: 3,
+            estimatedDuration: 2,
             instructions: [
                 "Notice 5 things you can see",
                 "Notice 4 things you can touch",
@@ -594,7 +594,7 @@ class MicroInterventionsViewModel: ObservableObject {
             category: .breathing,
             icon: "lungs.fill",
             color: .blue,
-            estimatedDuration: 5,
+            estimatedDuration: 2,
             instructions: [
                 "Inhale for 4 counts",
                 "Hold for 4 counts",
@@ -610,10 +610,10 @@ class MicroInterventionsViewModel: ObservableObject {
             category: .movement,
             icon: "figure.mind.and.body",
             color: .purple,
-            estimatedDuration: 8,
+            estimatedDuration: 3,
             instructions: [
                 "Start with your toes",
-                "Tense each muscle group for 5 seconds",
+                "Tense each muscle group for 30 seconds",
                 "Release and notice the relaxation",
                 "Move up through your body",
                 "End with your face and scalp"
@@ -626,7 +626,7 @@ class MicroInterventionsViewModel: ObservableObject {
             category: .social,
             icon: "heart.fill",
             color: .pink,
-            estimatedDuration: 6,
+            estimatedDuration: 4,
             instructions: [
                 "Start with yourself: 'May I be happy'",
                 "Extend to loved ones",
@@ -779,12 +779,12 @@ class MicroInterventionsViewModel: ObservableObject {
     
     func startPromptReflection(_ prompt: EmotionalPrompt) {
         // This would trigger the prompt reflection interface
-        print("Starting reflection for prompt: \(prompt.title)")
+     
     }
     
     func startMindfulnessMoment(_ moment: MindfulnessMoment) {
         // This would start a guided mindfulness session
-        print("Starting mindfulness: \(moment.title)")
+       
     }
     
     func completeIntervention(_ intervention: QuickIntervention) {

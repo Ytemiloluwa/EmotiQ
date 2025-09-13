@@ -161,9 +161,6 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
             let status = SubscriptionStatus(rawValue: user.subscriptionStatus ?? "free") ?? .free
             subscriptionStatus = status
             
-            if Config.isDebugMode {
-                print("📱 Loaded subscription status from Core Data: \(status.displayName)")
-            }
         }
         
         // Then check with RevenueCat for latest status
@@ -171,9 +168,7 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
             .sink(
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        if Config.isDebugMode {
-                            print("❌ Failed to load subscription status: \(error)")
-                        }
+
                     }
                 },
                 receiveValue: { [weak self] status in
@@ -185,54 +180,47 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
     }
     
     private func loadDailyUsage() {
-        print("🔍 DEBUG: loadDailyUsage() called")
+ 
         
         if let user = persistenceController.getCurrentUser() {
-            print("🔍 DEBUG: Found current user")
+         
             
             // Check if we need to reset daily usage (new day)
             let calendar = Calendar.current
             let today = calendar.startOfDay(for: Date())
-            print("🔍 DEBUG: Today's start: \(today)")
+           
             
             if let lastCheckIn = user.lastCheckInDate {
                 let lastCheckInDay = calendar.startOfDay(for: lastCheckIn)
-                print("🔍 DEBUG: Last check-in day: \(lastCheckInDay)")
+           
                 
                 if lastCheckInDay < today {
                     // Reset daily usage for new day
-                    print("🔍 DEBUG: New day detected, resetting daily usage")
+                   
                     user.dailyCheckInsUsed = 0
                     persistenceController.save()
                     
-                    if Config.isDebugMode {
-                        print("🔄 Daily usage reset for new day")
-                    }
+
                 } else {
-                    print("🔍 DEBUG: Same day, no reset needed")
+                    
                 }
             } else {
-                print("🔍 DEBUG: No lastCheckInDate found")
+             
             }
             
             DispatchQueue.main.async {
                 self.dailyUsage = Int(user.dailyCheckInsUsed)
-                print("🔍 DEBUG: Set dailyUsage to: \(self.dailyUsage)")
-                
-                if Config.isDebugMode {
-                    print("📊 Loaded daily usage: \(self.dailyUsage)/\(Config.Subscription.freeWeeklyLimit)")
-                }
+
             }
         } else {
-            print("🔍 DEBUG: No current user found")
+           
         }
     }
     
     private func loadWeeklyUsage() {
-        print("🔍 DEBUG: loadWeeklyUsage() called")
-        
+   
         if let user = persistenceController.getCurrentUser() {
-            print("🔍 DEBUG: Found current user for weekly usage")
+
             
             // Check if we need to reset weekly usage (7 days from week start)
             if persistenceController.shouldResetWeeklyUsage(for: user) {
@@ -241,14 +229,10 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
 
             DispatchQueue.main.async {
                 self.weeklyUsage = Int(user.weeklyCheckInsUsed)
-                print("🔍 DEBUG: Set weeklyUsage to: \(self.weeklyUsage)")
-                
-                if Config.isDebugMode {
-                    print("📊 Loaded weekly usage: \(self.weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
-                }
+
             }
         } else {
-            print("🔍 DEBUG: No current user found for weekly usage")
+            
         }
     }
     
@@ -257,9 +241,6 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         user.subscriptionStatus = status.rawValue
         persistenceController.save()
         
-        if Config.isDebugMode {
-            print("💾 Updated user subscription status to: \(status.displayName)")
-        }
     }
     
     func checkSubscriptionStatus() -> AnyPublisher<SubscriptionStatus, Error> {
@@ -301,14 +282,9 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
                 self.subscriptionStatus = newStatus
                 self.updateUserSubscriptionStatus(newStatus)
                 
-                if Config.isDebugMode {
-                    print("🔄 Subscription status refreshed to: \(newStatus.displayName)")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to refresh subscription status: \(error)")
-            }
+
         }
     }
     
@@ -319,32 +295,20 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
                 .eraseToAnyPublisher()
         }
         
-        if Config.isDebugMode {
-            print("🛒 Attempting to purchase: \(tier.displayName) (\(tier.monthlyPrice))")
-        }
-        
         return revenueCatService.purchaseProduct(tier.productIdentifier)
             .handleEvents(receiveOutput: { [weak self] success in
                 if success {
                     self?.subscriptionStatus = tier
                     self?.updateUserSubscriptionStatus(tier)
                     
-                    if Config.isDebugMode {
-                        print("✅ Purchase successful: \(tier.displayName)")
-                    }
                 } else {
-                    if Config.isDebugMode {
-                        print("❌ Purchase failed for: \(tier.displayName)")
-                    }
+
                 }
             })
             .eraseToAnyPublisher()
     }
     
     func restorePurchases() -> AnyPublisher<SubscriptionStatus, Error> {
-        if Config.isDebugMode {
-            print("🔄 Restoring purchases...")
-        }
         
         return revenueCatService.restorePurchases()
             .map { customerInfo in
@@ -360,9 +324,6 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
                 self?.subscriptionStatus = status
                 self?.updateUserSubscriptionStatus(status)
                 
-                if Config.isDebugMode {
-                    print("🔄 Restored subscription: \(status.displayName)")
-                }
             })
             .eraseToAnyPublisher()
     }
@@ -396,10 +357,6 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
             weeklyUsage = Int(user.weeklyCheckInsUsed)
         }
         
-        if Config.isDebugMode {
-            print("📈 Daily usage incremented: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
-            print("📈 Weekly usage incremented: \(weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
-        }
     }
     
     func incrementWeeklyUsage() {
@@ -412,9 +369,6 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
         // Update local state
         weeklyUsage = Int(user.weeklyCheckInsUsed)
         
-        if Config.isDebugMode {
-            print("📈 Weekly usage incremented: \(weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
-        }
     }
     
     func getRemainingDailyUsage() -> Int {
@@ -437,53 +391,33 @@ class SubscriptionService: SubscriptionServiceProtocol, ObservableObject {
     
     /// Refreshes daily usage and checks for daily reset
     func refreshDailyUsage() {
-        print("🔍 DEBUG: refreshDailyUsage() called")
         let previousUsage = dailyUsage
-        print("🔍 DEBUG: Previous usage: \(previousUsage)")
-        
+  
         loadDailyUsage()
-        print("🔍 DEBUG: After loadDailyUsage() - dailyUsage: \(dailyUsage)")
+
         
         // If usage was reset (went from >0 to 0), notify other components
         if previousUsage > 0 && dailyUsage == 0 {
-            print("🔍 DEBUG: Daily usage reset detected (previous: \(previousUsage) -> current: \(dailyUsage))")
+
             NotificationCenter.default.post(name: .dailyUsageReset, object: nil)
             
-            if Config.isDebugMode {
-                print("🔄 Daily usage reset detected and notification posted")
-            }
         }
         
-        if Config.isDebugMode {
-            print("🔄 Daily usage refreshed: \(dailyUsage)/\(Config.Subscription.freeDailyLimit)")
-        }
     }
     
     /// Refreshes weekly usage and checks for weekly reset
     func refreshWeeklyUsage() {
-        print("🔍 DEBUG: refreshWeeklyUsage() called")
         let previousUsage = weeklyUsage
-        print("🔍 DEBUG: Previous weekly usage: \(previousUsage)")
-        
         loadWeeklyUsage()
-        print("🔍 DEBUG: After loadWeeklyUsage() - weeklyUsage: \(weeklyUsage)")
         
         // If usage was reset (went from >0 to 0), notify other components
         if previousUsage > 0 && weeklyUsage == 0 {
-            print("🔍 DEBUG: Weekly usage reset detected (previous: \(previousUsage) -> current: \(weeklyUsage))")
+
             NotificationCenter.default.post(name: .weeklyUsageReset, object: nil)
-            
-            if Config.isDebugMode {
-                print("🔄 Weekly usage reset detected and notification posted")
-            }
+
         }
         
-        if Config.isDebugMode {
-            print("🔄 Weekly usage refreshed: \(weeklyUsage)/\(Config.Subscription.freeWeeklyLimit)")
-        }
     }
-    
-
     
     // MARK: - Feature Access Control
     

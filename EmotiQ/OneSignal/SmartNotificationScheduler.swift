@@ -4,15 +4,13 @@
 //  Created by Temiloluwa on 25-08-2025.
 //
 //
-//  Production-ready smart notification scheduler with behavioral analysis and ML optimization
-//
-
 import Foundation
 import UserNotifications
 import CoreML
 import Combine
 import UIKit
 import OneSignalFramework
+import CoreData
 
 // MARK: - Smart Notification Scheduler
 @MainActor
@@ -31,9 +29,9 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Configuration
-    private struct Config {
-        static let maxDailyNotifications = 5
-        static let minIntervalBetweenNotifications: TimeInterval = 3600 // 1 hour
+    private struct config {
+        // Removed notification limits - no maximum daily notifications or minimum intervals
+        static let appId = Config.oneSignalAppID
         static let optimizationInterval: TimeInterval = 86400 // Daily optimization
         static let engagementTrackingWindow: TimeInterval = 86400 * 7 // 1 week
         static let defaultSendTimeHour = 9 // 9 AM
@@ -48,6 +46,11 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
         setupBehaviorTracking()
         scheduleOptimization()
         loadScheduledNotifications()
+        
+        // Schedule reminders for active goals on app start
+        Task {
+            await scheduleRemindersForActiveGoals()
+        }
     }
     
     // MARK: - Setup Methods
@@ -60,7 +63,7 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
                 if granted {
                     self.setupNotificationCategories()
                 } else if let error = error {
-                    print("❌ Notification permission denied: \(error)")
+                
                 }
             }
         }
@@ -131,7 +134,19 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
             options: []
         )
         
-        return [welcomeCategory, emotionInterventionCategory, dailyCheckInCategory, achievementCategory, goalCompletionCategory]
+        // Goal progress reminder category
+        let goalReminderCategory = UNNotificationCategory(
+            identifier: "GOAL_REMINDER",
+            actions: [
+                UNNotificationAction(identifier: "update_progress", title: "Update Progress", options: [.foreground]),
+                UNNotificationAction(identifier: "view_goal", title: "View Goal", options: [.foreground]),
+                UNNotificationAction(identifier: "remind_later", title: "Remind Later", options: [])
+            ],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        
+        return [welcomeCategory, emotionInterventionCategory, dailyCheckInCategory, achievementCategory, goalCompletionCategory, goalReminderCategory]
     }
     
     private func setupBehaviorTracking() {
@@ -167,18 +182,32 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
             baseDelay: delay
         )
         
-        let notification = ScheduledNotification(
-            id: UUID().uuidString,
-            type: .emotionTriggered,
-            emotion: emotion,
-            intervention: intervention,
-            scheduledTime: optimalTime,
-            content: generateEmotionContent(emotion: emotion, intervention: intervention),
-            priority: calculatePriority(for: emotion),
-            personalizationData: await generatePersonalizationData(emotion: emotion)
-        )
+        let content = generateEmotionContent(emotion: emotion, intervention: intervention)
+        let personalizationData = await generatePersonalizationData(emotion: emotion)
         
-        await scheduleNotification(notification)
+        // Convert to OneSignal API format
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": content.title],
+            "contents": ["en": content.body],
+            "buttons": content.actionButtons?.map { button in
+                ["id": button.id, "text": button.text]
+            } ?? [],
+            "data": [
+                "type": "emotion_triggered",
+                "emotion": emotion.rawValue,
+                "intervention": intervention.rawValue,
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+                "scheduled_time": ISO8601DateFormatter().string(from: optimalTime)
+            ].merging(content.customData) { _, new in new },
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "send_after": ISO8601DateFormatter().string(from: optimalTime)
+        ]
+        
+        // Send via OneSignal API
+        await OneSignalService.shared.sendNotificationViaAPI(data)
+        
+      
     }
     
     func schedulePredictiveIntervention(
@@ -190,35 +219,267 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
             userBehavior: await behaviorAnalyzer.getCurrentBehaviorPattern()
         )
         
-        let notification = ScheduledNotification(
-            id: UUID().uuidString,
-            type: .predictiveIntervention,
-            emotion: prediction.predictedEmotion,
-            intervention: prediction.recommendedIntervention,
-            scheduledTime: optimalTime,
-            content: generatePredictiveContent(prediction: prediction),
-            priority: .medium,
-            personalizationData: await generatePersonalizationData(emotion: prediction.predictedEmotion)
-        )
+        let content = generatePredictiveContent(prediction: prediction)
+        let personalizationData = await generatePersonalizationData(emotion: prediction.predictedEmotion)
         
-        await scheduleNotification(notification)
+        // Check if scheduling is within OneSignal's 24-hour limit
+        let timeUntilScheduled = optimalTime.timeIntervalSince(Date())
+        guard timeUntilScheduled > 0 && timeUntilScheduled <= 86400 else {
+
+            return
+        }
+        
+        // Convert to OneSignal API format
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": content.title],
+            "contents": ["en": content.body],
+            "buttons": content.actionButtons?.map { button in
+                ["id": button.id, "text": button.text]
+            } ?? [],
+            "data": [
+                "type": "predictive_intervention",
+                "emotion": prediction.predictedEmotion.rawValue,
+                "intervention": prediction.recommendedIntervention.rawValue,
+                "confidence": prediction.confidence,
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+                "scheduled_time": ISO8601DateFormatter().string(from: optimalTime)
+            ].merging(content.customData) { _, new in new },
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "send_after": ISO8601DateFormatter().string(from: optimalTime)
+        ]
+        
+        // Send via OneSignal API
+        await OneSignalService.shared.sendNotificationViaAPI(data)
+        
+    
     }
     
     func scheduleDailyCheckIn() async {
-        let optimalTime = await calculateOptimalCheckInTime()
+        // Schedule for 8AM user's local timezone
+        let checkInTime = await get8AMUserTime()
         
-        let notification = ScheduledNotification(
-            id: "daily_checkin_\(Date().timeIntervalSince1970)",
-            type: .dailyCheckIn,
-            emotion: .neutral,
-            intervention: .mindfulnessCheck,
-            scheduledTime: optimalTime,
-            content: generateDailyCheckInContent(),
-            priority: .low,
-            personalizationData: await generatePersonalizationData(emotion: .neutral)
+        let content = generatePersonalizedDailyCheckInContent()
+
+        // Convert to OneSignal API format with proper timezone scheduling
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": content.title],
+            "contents": ["en": content.body],
+            "buttons": content.actionButtons?.map { button in
+                ["id": button.id, "text": button.text]
+            } ?? [],
+            "data": [
+                "type": "daily_checkin",
+                "emotion": "neutral",
+                "intervention": "mindfulness_check",
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+                "scheduled_time": ISO8601DateFormatter().string(from: checkInTime),
+                "timezone": TimeZone.current.identifier,
+                "personalized": "false"
+            ].merging(content.customData) { _, new in new },
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "send_after": ISO8601DateFormatter().string(from: checkInTime)
+        ]
+
+        // Send via OneSignal API
+        await OneSignalService.shared.sendNotificationViaAPI(data)
+
+    }
+    
+    // MARK: - Streak Maintenance Reminder
+    func scheduleStreakMaintenanceReminder() async {
+        // Schedule for 6PM user's local timezone (evening reminder)
+        let reminderTime = await get6PMUserTime()
+        
+        let content = generateStreakMaintenanceContent()
+
+        // Convert to OneSignal API format
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": content.title],
+            "contents": ["en": content.body],
+            "buttons": content.actionButtons?.map { button in
+                ["id": button.id, "text": button.text]
+            } ?? [],
+            "data": [
+                "type": "reminder",
+                "reminder_type": "streak_maintenance",
+                "emotion": "motivation",
+                "intervention": "streak_reminder",
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+                "scheduled_time": ISO8601DateFormatter().string(from: reminderTime),
+                "timezone": TimeZone.current.identifier
+            ].merging(content.customData) { _, new in new },
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "send_after": ISO8601DateFormatter().string(from: reminderTime)
+        ]
+
+        // Send via OneSignal API
+        await OneSignalService.shared.sendNotificationViaAPI(data)
+
+
+    }
+    
+    // MARK: - 8AM User Time Scheduling
+    private func get8AMUserTime() async -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get today's 8AM in user's timezone
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = 8
+        components.minute = 0
+        components.second = 0
+        
+        guard let today8AM = calendar.date(from: components) else {
+            // Fallback to 1 hour from now if date creation fails
+            return now.addingTimeInterval(3600)
+        }
+        
+        // If 8AM has passed today, schedule for tomorrow 8AM
+        if today8AM <= now {
+            return calendar.date(byAdding: .day, value: 1, to: today8AM) ?? now.addingTimeInterval(3600)
+        }
+        
+        return today8AM
+    }
+    
+    private func get6PMUserTime() async -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get today's 6PM in user's timezone
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = 18
+        components.minute = 0
+        components.second = 0
+        
+        guard let today6PM = calendar.date(from: components) else {
+            // Fallback to 1 hour from now if date creation fails
+            return now.addingTimeInterval(3600)
+        }
+        
+        // If 6PM has passed today, schedule for tomorrow 6PM
+        if today6PM <= now {
+            return calendar.date(byAdding: .day, value: 1, to: today6PM) ?? now.addingTimeInterval(3600)
+        }
+        
+        return today6PM
+    }
+    
+    private func get2PMUserTime() async -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get today's 2PM in user's timezone
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = 14
+        components.minute = 0
+        components.second = 0
+        
+        guard let today2PM = calendar.date(from: components) else {
+            // Fallback to 1 hour from now if date creation fails
+            return now.addingTimeInterval(3600)
+        }
+        
+        // If 2PM has passed today, schedule for tomorrow 2PM
+        if today2PM <= now {
+            return calendar.date(byAdding: .day, value: 1, to: today2PM) ?? now.addingTimeInterval(3600)
+        }
+        
+        return today2PM
+    }
+    
+    // MARK: - Personalized Timing
+    private func getPersonalizedCheckInTime() async -> Date {
+        let behaviorPattern = await behaviorAnalyzer.getCurrentBehaviorPattern()
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get user's preferred app usage hours
+        let preferredHours = behaviorPattern.averageAppUsageHours.isEmpty ? [9, 12, 18] : behaviorPattern.averageAppUsageHours
+        
+        // Find the next optimal time based on user behavior
+        let nextOptimalHour = findNextOptimalHour(from: now, preferredHours: preferredHours)
+        
+        // Get today's optimal time
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = nextOptimalHour
+        components.minute = 0
+        components.second = 0
+        
+        let todayOptimalTime = calendar.date(from: components)!
+        
+        // If it's already past the optimal time today, schedule for tomorrow
+        if now > todayOptimalTime {
+            return calendar.date(byAdding: .day, value: 1, to: todayOptimalTime)!
+        } else {
+            return todayOptimalTime
+        }
+    }
+    
+    private func findNextOptimalHour(from date: Date, preferredHours: [Int]) -> Int {
+        let currentHour = Calendar.current.component(.hour, from: date)
+        
+        // Find the next preferred hour
+        for hour in preferredHours.sorted() {
+            if hour > currentHour {
+                return hour
+            }
+        }
+        
+        // If no preferred hour is later today, use the first preferred hour tomorrow
+        return preferredHours.min() ?? 9
+    }
+    
+    private func generatePersonalizedDailyCheckInContent() -> NotificationContent {
+        let personalizedMessages = [
+            ("🌅 Good morning! Time for your check-in", "How are you feeling today? Let's start your day with emotional awareness."),
+            ("💫 Your daily emotional check-in awaits", "Take a moment to connect with your feelings and set your emotional intention."),
+            ("🌟 Ready for your mindful moment?", "Your personalized emotional wellness check-in is here. How are you doing?"),
+            ("🎯 Daily emotional check-in time", "Let's check in with your emotional state and continue your growth journey.")
+        ]
+        
+        let randomMessage = personalizedMessages.randomElement()!
+        
+        return NotificationContent(
+            title: randomMessage.0,
+            body: randomMessage.1,
+            actionButtons: [
+                NotificationActionButton(id: "quick_checkin", text: "Quick Check-in"),
+                NotificationActionButton(id: "voice_analysis", text: "Voice Analysis"),
+                NotificationActionButton(id: "mindfulness", text: "Mindfulness")
+            ],
+            customData: [
+                "personalized": "true",
+                "checkin_type": "daily_personalized"
+            ],
+            categoryIdentifier: "DAILY_CHECKIN",
+            sound: .default,
+            badge: 1,
+            userInfo: [:]
         )
+    }
+    
+    private func calculateNext9AM() -> Date {
+        let calendar = Calendar.current
+        let now = Date()
         
-        await scheduleNotification(notification)
+        // Get today's 9 AM
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = 9
+        components.minute = 0
+        components.second = 0
+        
+        let today9AM = calendar.date(from: components)!
+        
+        // If it's already past 9 AM today, schedule for tomorrow 9 AM
+        if now > today9AM {
+            return calendar.date(byAdding: .day, value: 1, to: today9AM)!
+        } else {
+            return today9AM
+        }
     }
     
     func scheduleAchievementCelebration(
@@ -228,39 +489,253 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
         
         let celebrationTime = Date().addingTimeInterval(delay)
         
-        let notification = ScheduledNotification(
-            id: "achievement_\(achievement.id)",
-            type: .achievement,
-            emotion: .joy,
-            intervention: .gratitudePractice,
-            scheduledTime: celebrationTime,
-            content: generateAchievementContent(achievement: achievement),
-            priority: .high,
-            personalizationData: await generatePersonalizationData(emotion: .joy)
-        )
+        let content = generateAchievementContent(achievement: achievement)
+        let personalizationData = await generatePersonalizationData(emotion: .joy)
         
-        await scheduleNotification(notification)
+        // Convert to OneSignal API format
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": content.title],
+            "contents": ["en": content.body],
+            "buttons": content.actionButtons?.map { button in
+                ["id": button.id, "text": button.text]
+            } ?? [],
+            "data": [
+                "type": "achievement",
+                "emotion": "joy",
+                "intervention": "gratitude_practice",
+                "achievement_id": achievement.id,
+                "achievement_type": achievement.type.rawValue,
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+                "scheduled_time": ISO8601DateFormatter().string(from: celebrationTime)
+            ].merging(content.customData) { _, new in new },
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "send_after": ISO8601DateFormatter().string(from: celebrationTime)
+        ]
+        
+        // Send via OneSignal API
+        await OneSignalService.shared.sendNotificationViaAPI(data)
+        
+    
+    }
+    
+    // MARK: - Goal Progress Reminders
+    func scheduleGoalProgressReminder(for goal: GoalEntity) async {
+        // Check if goal has reminder enabled and is not completed
+        guard goal.reminderEnabled && !goal.isCompleted else { return }
+        
+        // Schedule for 2PM user's local timezone (afternoon reminder)
+        let reminderTime = await get2PMUserTime()
+        
+        let content = generateGoalProgressReminderContent(for: goal)
+        
+        // Convert to OneSignal API format
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": content.title],
+            "contents": ["en": content.body],
+            "buttons": content.actionButtons?.map { button in
+                ["id": button.id, "text": button.text]
+            } ?? [],
+            "data": [
+                "type": "reminder",
+                "reminder_type": "goal_progress",
+                "goal_id": goal.id?.uuidString ?? "",
+                "goal_title": goal.title ?? "Your Goal",
+                "goal_category": goal.category ?? "personal",
+                "current_progress": String(goal.progress),
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+                "scheduled_time": ISO8601DateFormatter().string(from: reminderTime),
+                "timezone": TimeZone.current.identifier
+            ].merging(content.customData) { _, new in new },
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "send_after": ISO8601DateFormatter().string(from: reminderTime)
+        ]
+        
+        // Send via OneSignal API
+        await OneSignalService.shared.sendNotificationViaAPI(data)
+        
+       
+    }
+    
+    // MARK: - Goal Reminder Management
+    func scheduleRemindersForActiveGoals() async {
+        // Get all active goals with reminders enabled
+        let activeGoals = await getActiveGoalsWithReminders()
+        
+        for goal in activeGoals {
+            await scheduleGoalProgressReminder(for: goal)
+        }
+        
+    }
+    
+    func scheduleReminderForGoal(_ goal: GoalEntity) async {
+        // Schedule reminder for a specific goal
+        await scheduleGoalProgressReminder(for: goal)
+  
+    }
+    
+    func cancelRemindersForGoal(_ goalId: UUID) async {
+        // Cancel existing reminders for a specific goal
+        let center = UNUserNotificationCenter.current()
+        let pendingRequests = await center.pendingNotificationRequests()
+        
+        let goalReminders = pendingRequests.filter { request in
+            if let userInfo = request.content.userInfo as? [String: Any],
+               let reminderGoalId = userInfo["goal_id"] as? String {
+                return UUID(uuidString: reminderGoalId) == goalId
+            }
+            return false
+        }
+        
+        let identifiers = goalReminders.map { $0.identifier }
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        
+
+    }
+    
+    private func getActiveGoalsWithReminders() async -> [GoalEntity] {
+        let context = PersistenceController.shared.container.viewContext
+        let request: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        
+        // Fetch goals that have reminders enabled and are not completed
+        request.predicate = NSPredicate(format: "reminderEnabled == YES AND isCompleted == NO")
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \GoalEntity.createdAt, ascending: false)]
+        
+        do {
+            let goals = try context.fetch(request)
+          
+            return goals
+        } catch {
+           
+            return []
+        }
+    }
+    
+    private func getPersonalizedGoalReminderTime(for goal: GoalEntity) async -> Date {
+        let behaviorPattern = await behaviorAnalyzer.getCurrentBehaviorPattern()
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Use goal's custom reminder time if set, otherwise use behavior-based timing
+        if let customReminderTime = goal.reminderTime {
+            let customHour = calendar.component(.hour, from: customReminderTime)
+            let customMinute = calendar.component(.minute, from: customReminderTime)
+            
+            // Get today's custom time
+            var components = calendar.dateComponents([.year, .month, .day], from: now)
+            components.hour = customHour
+            components.minute = customMinute
+            components.second = 0
+            
+            let todayCustomTime = calendar.date(from: components)!
+            
+            // If it's already past the custom time today, schedule for tomorrow
+            if now > todayCustomTime {
+                return calendar.date(byAdding: .day, value: 1, to: todayCustomTime)!
+            } else {
+                return todayCustomTime
+            }
+        } else {
+            // Use behavior-based timing (preferred app usage hours)
+            let preferredHours = behaviorPattern.averageAppUsageHours.isEmpty ? [10, 14, 19] : behaviorPattern.averageAppUsageHours
+            let nextOptimalHour = findNextOptimalHour(from: now, preferredHours: preferredHours)
+            
+            // Get today's optimal time
+            var components = calendar.dateComponents([.year, .month, .day], from: now)
+            components.hour = nextOptimalHour
+            components.minute = 30 // 30 minutes past the hour for variety
+            components.second = 0
+            
+            let todayOptimalTime = calendar.date(from: components)!
+            
+            // If it's already past the optimal time today, schedule for tomorrow
+            if now > todayOptimalTime {
+                return calendar.date(byAdding: .day, value: 1, to: todayOptimalTime)!
+            } else {
+                return todayOptimalTime
+            }
+        }
+    }
+    
+    private func generateGoalProgressReminderContent(for goal: GoalEntity) -> NotificationContent {
+        let goalTitle = goal.title ?? "Your Goal"
+        let progress = Int(goal.progress * 100)
+        let category = goal.category ?? "personal"
+        
+        let progressMessages = [
+            ("🎯 Your goal '\(goalTitle)' awaits", "You're \(progress)% there! Keep the momentum going."),
+            ("💪 Don't forget '\(goalTitle)'", "You've made great progress (\(progress)%). Time to take the next step!"),
+            ("🌟 '\(goalTitle)' progress check", "You're doing amazing! \(progress)% complete. Ready for more?"),
+            ("🚀 Keep pushing towards '\(goalTitle)'", "You're \(progress)% of the way there. Every step counts!")
+        ]
+        
+        let randomMessage = progressMessages.randomElement()!
+        
+        return NotificationContent(
+            title: randomMessage.0,
+            body: randomMessage.1,
+            actionButtons: [
+                NotificationActionButton(id: "update_progress", text: "Update Progress"),
+                NotificationActionButton(id: "view_goal", text: "View Goal"),
+                NotificationActionButton(id: "remind_later", text: "Remind Later")
+            ],
+            customData: [
+                "goal_id": goal.id?.uuidString ?? "",
+                "goal_category": category,
+                "current_progress": String(progress)
+            ],
+            categoryIdentifier: "GOAL_REMINDER",
+            sound: .default,
+            badge: 1,
+            userInfo: [:]
+        )
     }
     
     func scheduleGoalCompletionCelebration(
         goal: GoalEntity,
         delay: TimeInterval = 30 // 30 seconds delay
     ) async {
+       
         
-        let celebrationTime = Date().addingTimeInterval(delay)
+        // Send goal completion notification via OneSignal API to ensure it's saved to history
+        let goalTitle = goal.title ?? "Your Goal"
+        let goalCategory = goal.category ?? "personal"
         
-        let notification = ScheduledNotification(
-            id: "goal_\(goal.id?.uuidString ?? UUID().uuidString)",
-            type: .achievement, // Reuse achievement type for goal completion
-            emotion: .joy,
-            intervention: .gratitudePractice,
-            scheduledTime: celebrationTime,
-            content: generateGoalCompletionContent(goal: goal),
-            priority: .high,
-            personalizationData: await generatePersonalizationData(emotion: .joy)
-        )
+        let celebrationMessages = [
+            ("🎯 Goal Achieved!", "Congratulations! You've completed '\(goalTitle)'. Your dedication is inspiring!"),
+            ("🌟 Mission Accomplished", "You did it! '\(goalTitle)' is now complete. Time to celebrate your success!"),
+            ("🏆 Goal Completed", "Amazing work! You've successfully achieved '\(goalTitle)'. Keep up the momentum!"),
+            ("✨ Achievement Unlocked", "Fantastic! '\(goalTitle)' is done. Your emotional growth journey continues!")
+        ]
         
-        await scheduleNotification(notification)
+        let randomMessage = celebrationMessages.randomElement()!
+        
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": randomMessage.0],
+            "contents": ["en": randomMessage.1],
+            "buttons": [
+                ["id": "view_goals", "text": "View Goals"],
+                ["text": "Set New Goal", "id": "set_new_goal"]
+            ],
+            "data": [
+                "type": "goal_completion",
+                "goal_id": goal.id?.uuidString ?? "",
+                "goal_title": goalTitle,
+                "goal_category": goalCategory,
+                "campaign_type": "goal_completion",
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ],
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""]
+        ]
+        
+        // Send via OneSignal API with delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            Task {
+                await OneSignalService.shared.sendNotificationViaAPI(data)
+            }
+        }
     }
     
     // MARK: - Missing Methods Implementation
@@ -284,8 +759,8 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
         let calendar = Calendar.current
         let currentTime = Date()
         
-        // Use ML prediction if available and valid
-        if prediction.confidence > 0.7 && prediction.optimalTime > currentTime {
+        // Use ML prediction if available and valid (regardless of confidence)
+        if prediction.optimalTime > currentTime {
             return prediction.optimalTime
         }
         
@@ -341,24 +816,24 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
     private func findOptimalHourFromBehavior(_ behavior: UserBehaviorPattern, for emotion: EmotionType) -> Int {
         // Use emotional peak times if available
         if !behavior.emotionalPeakTimes.isEmpty {
-            return behavior.emotionalPeakTimes.first ?? Config.defaultSendTimeHour
+            return behavior.emotionalPeakTimes.first ?? config.defaultSendTimeHour
         }
         
         // Use average app usage hours
         if !behavior.averageAppUsageHours.isEmpty {
-            return behavior.averageAppUsageHours.first ?? Config.defaultSendTimeHour
+            return behavior.averageAppUsageHours.first ?? config.defaultSendTimeHour
         }
         
-        return Config.defaultSendTimeHour
+        return config.defaultSendTimeHour
     }
     
     private func findMostActiveHour(from behavior: UserBehaviorPattern) -> Int {
         // Use average app usage hours for check-in timing
         if !behavior.averageAppUsageHours.isEmpty {
-            return behavior.averageAppUsageHours.first ?? Config.defaultSendTimeHour
+            return behavior.averageAppUsageHours.first ?? config.defaultSendTimeHour
         }
         
-        return Config.defaultSendTimeHour
+        return config.defaultSendTimeHour
     }
     
     // MARK: - Optimal Timing Calculation
@@ -401,10 +876,10 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
         let hour = calendar.component(.hour, from: baseTime)
         
         // Avoid quiet hours
-        if hour >= Config.quietHoursStart || hour < Config.quietHoursEnd {
+        if hour >= config.quietHoursStart || hour < config.quietHoursEnd {
             // Schedule for next morning
             var components = calendar.dateComponents([.year, .month, .day], from: baseTime)
-            components.hour = Config.defaultSendTimeHour
+            components.hour = config.defaultSendTimeHour
             components.minute = 0
             components.second = 0
             
@@ -499,6 +974,40 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
                 "intervention": prediction.recommendedIntervention.rawValue,
                 "type": "predictive_intervention",
                 "confidence": String(prediction.confidence)
+            ]
+        )
+    }
+    
+    private func generateStreakMaintenanceContent() -> NotificationContent {
+        let streakMessages = [
+            ("🔥 Don't lose your streak!", "You've been doing great! Don't let your emotional wellness journey slip away."),
+            ("💪 Keep the momentum!", "Your consistency is inspiring. Let's continue your emotional growth journey!"),
+            ("🌟 You're on fire!", "Don't break your amazing streak! Your emotional wellness matters."),
+            ("🎯 Stay consistent!", "You've built something beautiful. Keep nurturing your emotional growth!")
+        ]
+        
+        let randomMessage = streakMessages.randomElement()!
+        
+        return NotificationContent(
+            title: randomMessage.0,
+            body: randomMessage.1,
+            actionButtons: [
+                NotificationActionButton(id: "continue_streak", text: "Continue Streak"),
+                NotificationActionButton(id: "voice_check", text: "Voice Check"),
+                NotificationActionButton(id: "remind_later", text: "Remind Later")
+            ],
+            customData: [
+                "type": "reminder",
+                "reminder_type": "streak_maintenance",
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ],
+            categoryIdentifier: "STREAK_REMINDER",
+            sound: .default,
+            badge: 1,
+            userInfo: [
+                "type": "reminder",
+                "reminder_type": "streak_maintenance",
+                "timestamp": ISO8601DateFormatter().string(from: Date())
             ]
         )
     }
@@ -645,18 +1154,11 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
     }
     
     // MARK: - Notification Scheduling
+    // DEPRECATED: This method is no longer used. All notifications now go through OneSignal API
+    // to ensure they are saved to notification history and prevent duplicates.
+    @available(*, deprecated, message: "Use OneSignal API methods instead for proper history tracking")
     private func scheduleNotification(_ notification: ScheduledNotification) async {
-        // Check if we can send more notifications today
-        guard await canScheduleMoreNotifications() else {
-            print("⚠️ Daily notification limit reached")
-            return
-        }
-        
-        // Check minimum interval
-        guard await respectsMinimumInterval(notification.scheduledTime) else {
-            print("⚠️ Notification too close to previous one")
-            return
-        }
+    
         
         // Create UNNotificationRequest
         let content = UNMutableNotificationContent()
@@ -670,7 +1172,7 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
         // Calculate time interval
         let timeInterval = notification.scheduledTime.timeIntervalSince(Date())
         guard timeInterval > 0 else {
-            print("⚠️ Cannot schedule notification in the past")
+          
             return
         }
         
@@ -694,10 +1196,9 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
             // Update analytics
             notificationAnalytics.notificationsScheduled += 1
             
-            print("✅ Scheduled notification: \(notification.content.title) for \(notification.scheduledTime)")
             
         } catch {
-            print("❌ Failed to schedule notification: \(error)")
+           
         }
     }
     
@@ -759,7 +1260,7 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
     
     // MARK: - Optimization
     private func scheduleOptimization() {
-        Timer.scheduledTimer(withTimeInterval: Config.optimizationInterval, repeats: true) { _ in
+        Timer.scheduledTimer(withTimeInterval: config.optimizationInterval, repeats: true) { _ in
             Task { @MainActor in
                 await self.optimizeNotificationTiming()
             }
@@ -781,11 +1282,10 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
         lastOptimizationDate = Date()
         isOptimizing = false
         
-        print("✅ Notification timing optimization completed")
     }
     
     private func analyzeRecentNotificationPerformance() async -> NotificationPerformanceAnalysis {
-        let oneWeekAgo = Date().addingTimeInterval(-Config.engagementTrackingWindow)
+        let oneWeekAgo = Date().addingTimeInterval(-config.engagementTrackingWindow)
         
         // Analyze engagement rates by time of day, emotion, and intervention type
         let analysis = NotificationPerformanceAnalysis()
@@ -806,24 +1306,7 @@ class SmartNotificationScheduler: NSObject, ObservableObject {
     }
     
     // MARK: - Helper Methods
-    private func canScheduleMoreNotifications() async -> Bool {
-        let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
-        
-        let todayNotifications = scheduledNotifications.filter { notification in
-            notification.scheduledTime >= today && notification.scheduledTime < tomorrow
-        }
-        
-        return todayNotifications.count < Config.maxDailyNotifications
-    }
-    
-    private func respectsMinimumInterval(_ scheduledTime: Date) async -> Bool {
-        let recentNotifications = scheduledNotifications.filter { notification in
-            abs(notification.scheduledTime.timeIntervalSince(scheduledTime)) < Config.minIntervalBetweenNotifications
-        }
-        
-        return recentNotifications.isEmpty
-    }
+    // Removed notification limit helper methods - no limits enforced
     
     private func generatePersonalizationData(emotion: EmotionType) async -> [String: Any] {
         let behaviorPattern = await behaviorAnalyzer.getCurrentBehaviorPattern()
@@ -920,6 +1403,8 @@ extension SmartNotificationScheduler: UNUserNotificationCenterDelegate {
             await handleQuickCheckIn(userInfo)
         case "VOICE_ANALYSIS":
             await handleVoiceAnalysis(userInfo)
+        case "update_progress", "view_goal", "remind_later":
+            await handleGoalReminderAction(userInfo, action: actionIdentifier)
         default:
             break
         }
@@ -1033,6 +1518,53 @@ extension SmartNotificationScheduler: UNUserNotificationCenterDelegate {
         // Navigate to voice analysis
         NotificationCenter.default.post(name: .navigateToVoiceAnalysis, object: nil)
     }
+    
+    private func handleGoalReminderAction(_ userInfo: [AnyHashable: Any], action: String) async {
+        guard let goalIdString = userInfo["goal_id"] as? String,
+              let goalId = UUID(uuidString: goalIdString) else {
+          
+            return
+        }
+        
+        switch action {
+        case "update_progress":
+            // Navigate to goal progress update
+            NotificationCenter.default.post(
+                name: Notification.Name("navigateToGoalProgress"),
+                object: nil,
+                userInfo: ["goal_id": goalId]
+            )
+        case "view_goal":
+            // Navigate to goal details
+            NotificationCenter.default.post(
+                name: Notification.Name("navigateToGoalDetails"),
+                object: nil,
+                userInfo: ["goal_id": goalId]
+            )
+        case "remind_later":
+            // Reschedule reminder for 2 hours later
+            await rescheduleGoalReminder(goalId: goalId, delayHours: 2)
+        default:
+           "Unknown goal"
+        }
+    }
+    
+    private func rescheduleGoalReminder(goalId: UUID, delayHours: Int) async {
+        let context = PersistenceController.shared.container.viewContext
+        let request: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", goalId as CVarArg)
+        
+        do {
+            let goals = try context.fetch(request)
+            if let goal = goals.first {
+                // Reschedule the reminder
+                await scheduleGoalProgressReminder(for: goal)
+            
+            }
+        } catch {
+        
+        }
+    }
 }
 
 // MARK: - Supporting Models
@@ -1056,7 +1588,7 @@ enum NotificationType {
     case reminder
 }
 
-enum NotificationPriority {
+enum NotificationPriority: Codable {
     case low
     case medium
     case high

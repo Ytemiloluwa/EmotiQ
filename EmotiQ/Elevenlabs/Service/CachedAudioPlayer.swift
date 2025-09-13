@@ -15,6 +15,7 @@ class CachedAudioPlayer: NSObject, ObservableObject {
     @Published var currentTime: TimeInterval = 0
     @Published var duration: TimeInterval = 0
     @Published var playbackRate: Float = 1.0
+    @Published var isLooping = false
     
     private var audioPlayer: AVAudioPlayer?
     private var timer: Timer?
@@ -41,10 +42,6 @@ class CachedAudioPlayer: NSObject, ObservableObject {
         
         // Check if user has a voice profile
         guard let finalVoiceId = userVoiceId else {
-            if Config.isDebugMode {
-                print("🔧 No voice profile available for audio playback: \(text)")
-                print("💡 User needs to set up voice cloning in Coaching section")
-            }
             throw ElevenLabsError.noVoiceProfile
         }
         
@@ -75,17 +72,10 @@ class CachedAudioPlayer: NSObject, ObservableObject {
             try await playFromURL(cacheURL)
             
         } catch ElevenLabsError.noVoiceProfile {
-            // User needs to set up voice cloning - log for debugging
-            if Config.isDebugMode {
-                print("🔧 Voice profile required for audio playback: \(text)")
-                print("💡 User needs to set up voice cloning in Coaching section")
-            }
             throw ElevenLabsError.noVoiceProfile
             
         } catch {
-            if Config.isDebugMode {
-                print("⚠️ Failed to generate or play audio: \(error)")
-            }
+
             throw error
         }
     }
@@ -98,6 +88,7 @@ class CachedAudioPlayer: NSObject, ObservableObject {
             audioPlayer?.delegate = self
             audioPlayer?.prepareToPlay()
             audioPlayer?.rate = playbackRate
+            audioPlayer?.numberOfLoops = isLooping ? -1 : 0
             
             duration = audioPlayer?.duration ?? 0
             currentTime = 0
@@ -111,7 +102,7 @@ class CachedAudioPlayer: NSObject, ObservableObject {
             }
             
         } catch {
-            print("Failed to play audio from URL: \(error)")
+
             throw error
         }
     }
@@ -161,6 +152,13 @@ class CachedAudioPlayer: NSObject, ObservableObject {
         HapticManager.shared.selection()
     }
     
+    func toggleLoop() {
+        isLooping.toggle()
+        audioPlayer?.numberOfLoops = isLooping ? -1 : 0
+        
+        HapticManager.shared.selection()
+    }
+    
     // MARK: - Private Methods
     
     private func setupAudioSession() {
@@ -169,15 +167,21 @@ class CachedAudioPlayer: NSObject, ObservableObject {
             try audioSession.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP])
             try audioSession.setActive(true)
         } catch {
-            print("Failed to setup audio session: \(error)")
+    
         }
     }
     
     private func startTimer() {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.updateCurrentTime()
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.updateCurrentTime()
+            }
+        }
+        // Ensure timer runs on main run loop
+        if let timer = timer {
+            RunLoop.main.add(timer, forMode: .common)
         }
     }
     
@@ -188,7 +192,11 @@ class CachedAudioPlayer: NSObject, ObservableObject {
     
     private func updateCurrentTime() {
         guard let player = audioPlayer else { return }
-        currentTime = player.currentTime
+        let newTime = player.currentTime
+        if newTime != currentTime {
+            currentTime = newTime
+
+        }
     }
 }
 
@@ -197,11 +205,16 @@ class CachedAudioPlayer: NSObject, ObservableObject {
 extension CachedAudioPlayer: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
-            isPlaying = false
-            currentTime = duration
-            stopTimer()
-            
-            HapticManager.shared.audioPlayback(.complete)
+            if !isLooping {
+                isPlaying = false
+                currentTime = duration
+                stopTimer()
+                
+                HapticManager.shared.audioPlayback(.complete)
+            } else {
+                // Reset current time for loop
+                currentTime = 0
+            }
         }
     }
     
@@ -209,10 +222,6 @@ extension CachedAudioPlayer: AVAudioPlayerDelegate {
         Task { @MainActor in
             isPlaying = false
             stopTimer()
-            
-            if let error = error {
-                print("Audio player decode error: \(error)")
-            }
             
             HapticManager.shared.notification(.error)
         }

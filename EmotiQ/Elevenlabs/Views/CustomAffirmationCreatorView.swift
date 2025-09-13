@@ -5,6 +5,7 @@
 //  Created by Temiloluwa on 19-08-2025.
 //
 
+
 import Foundation
 import SwiftUI
 
@@ -25,6 +26,8 @@ struct CustomAffirmationCreatorView: View {
     @State private var showingPreview = false
     @State private var isPlaying = false
     @State private var isSaving = false
+    @State private var showSaveToast = false
+    @State private var navigateToAffirmations = false
     
     // UI State for async data
     @State private var remainingGenerations: Int = 0
@@ -90,6 +93,9 @@ struct CustomAffirmationCreatorView: View {
         }
         .sheet(isPresented: $purchaseManager.showingPurchaseView) {
             AffirmationPurchaseView(shouldDismiss: $purchaseManager.showingPurchaseView)
+        }
+        .navigationDestination(isPresented: $navigateToAffirmations) {
+            AllAffirmationsView()
         }
         .onChange(of: purchaseManager.purchaseCompleted) { oldValue, newValue in
             if newValue {
@@ -221,6 +227,10 @@ struct CustomAffirmationCreatorView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(ThemeColors.accent.opacity(0.1))
             )
+        }
+        .onTapGesture {
+            // Dismiss keyboard when tapping outside the TextEditor
+            hideKeyboard()
         }
     }
     
@@ -354,6 +364,14 @@ struct CustomAffirmationCreatorView: View {
         .onReceive(audioPlayer.$isPlaying) { playing in
             isPlaying = playing
         }
+        .overlay(
+            Group {
+                if showSaveToast {
+                    ToastView(message: "Affirmation saved successfully! 🎉")
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+        )
     }
     
     // MARK: - Generate Button
@@ -419,14 +437,12 @@ struct CustomAffirmationCreatorView: View {
     // MARK: - Helper Methods
     
     private func loadUIState() async {
-        print("🔍 CustomAffirmationCreatorView: loadUIState called")
+       
         
         remainingGenerations = await securePurchaseManager.getRemainingUses(for: .customAffirmationCreator)
         canGenerateAffirmation = await securePurchaseManager.canGenerateAffirmations(from: .customAffirmationCreator)
         needsPurchase = await securePurchaseManager.needsToPurchase(from: .customAffirmationCreator)
         
-        print("🔍 CustomAffirmationCreatorView: UI State loaded - remaining: \(remainingGenerations), canGenerate: \(canGenerateAffirmation), needsPurchase: \(needsPurchase)")
-        print("🔍 CustomAffirmationCreatorView: buttonText will be: \(buttonText)")
     }
     
     // MARK: - Computed Properties
@@ -467,7 +483,7 @@ struct CustomAffirmationCreatorView: View {
             HapticManager.shared.notification(.success)
             
         } catch {
-            print("Failed to generate affirmation: \(error)")
+            
             HapticManager.shared.notification(.error)
         }
     }
@@ -479,7 +495,7 @@ struct CustomAffirmationCreatorView: View {
                 emotion: affirmation.targetEmotion
             )
         } catch {
-            print("Failed to play preview: \(error)")
+           
             HapticManager.shared.notification(.error)
         }
     }
@@ -505,12 +521,21 @@ struct CustomAffirmationCreatorView: View {
             // Provide user feedback
             HapticManager.shared.notification(.success)
             
-            // Dismiss the view after a brief delay to show success
-            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            //dismiss()
+            // Show success toast
+            await MainActor.run {
+                showSaveToast = true
+            }
+            
+            // Auto-hide toast after 2.5 seconds and navigate to AffirmationsView
+            try await Task.sleep(nanoseconds: 2_500_000_000) // 2.5 seconds
+            await MainActor.run {
+                showSaveToast = false
+                // Navigate to AffirmationsView to show the newly saved affirmation
+                navigateToAffirmations = true
+            }
             
         } catch {
-            print("Failed to save affirmation: \(error)")
+            
             HapticManager.shared.notification(.error)
         }
     }
@@ -651,33 +676,37 @@ struct AudioPlayerControls: View {
     let audioPlayer: CachedAudioPlayer
     
     @StateObject private var themeManager = ThemeManager()
+    @State private var currentTime: TimeInterval = 0
+    @State private var duration: TimeInterval = 0
+    @State private var isPlaying: Bool = false
+    @State private var playbackRate: Float = 1.0
     
     var body: some View {
         VStack(spacing: 12) {
             // Progress Bar
             VStack(spacing: 4) {
                 HStack {
-                    Text(formatTime(audioPlayer.currentTime))
+                    Text(formatTime(currentTime))
                         .font(.caption2)
                         .foregroundColor(ThemeColors.secondaryText)
                     
                     Spacer()
                     
-                    Text(formatTime(audioPlayer.duration))
+                    Text(formatTime(duration))
                         .font(.caption2)
                         .foregroundColor(ThemeColors.secondaryText)
                 }
                 
-                ProgressView(value: audioPlayer.currentTime, total: audioPlayer.duration)
+                ProgressView(value: currentTime, total: max(duration, 0.1))
                     .tint(ThemeColors.accent)
             }
             
             // Playback Controls
             HStack(spacing: 24) {
                 Button {
-                    audioPlayer.setPlaybackRate(audioPlayer.playbackRate == 1.0 ? 0.8 : 1.0)
+                    audioPlayer.setPlaybackRate(playbackRate == 1.0 ? 0.8 : 1.0)
                 } label: {
-                    Text(audioPlayer.playbackRate == 1.0 ? "0.8x" : "1.0x")
+                    Text(playbackRate == 1.0 ? "0.8x" : "1.0x")
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(ThemeColors.accent)
@@ -693,13 +722,13 @@ struct AudioPlayerControls: View {
                 Spacer()
                 
                 Button {
-                    if audioPlayer.isPlaying {
+                    if isPlaying {
                         audioPlayer.pause()
                     } else {
                         audioPlayer.resume()
                     }
                 } label: {
-                    Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                         .font(.title2)
                         .foregroundColor(ThemeColors.accent)
                 }
@@ -722,18 +751,63 @@ struct AudioPlayerControls: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(ThemeColors.secondaryBackground.opacity(0.5))
         )
+        .onReceive(audioPlayer.$currentTime) { newTime in
+            currentTime = newTime.isFinite ? newTime : 0.0
+        }
+        .onReceive(audioPlayer.$duration) { newDuration in
+            duration = newDuration.isFinite ? newDuration : 0.1
+        }
+        .onReceive(audioPlayer.$isPlaying) { newPlaying in
+            isPlaying = newPlaying
+        }
+        .onReceive(audioPlayer.$playbackRate) { newRate in
+            playbackRate = newRate
+        }
     }
     
     private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
+        let safeTime = time.isFinite ? time : 0.0
+        let minutes = Int(safeTime) / 60
+        let seconds = Int(safeTime) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
+// MARK: - Toast View
+struct ToastView: View {
+    let message: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title3)
+                .foregroundColor(.green)
+            
+            Text(message)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(ThemeColors.primaryText)
+                .multilineTextAlignment(.leading)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(ThemeColors.secondaryBackground)
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        )
+        .padding(.horizontal, 20)
+        .padding(.bottom, 100) // Above the keyboard/safe area
+    }
+}
+
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
 
 #Preview {
     CustomAffirmationCreatorView()
 }
-
 

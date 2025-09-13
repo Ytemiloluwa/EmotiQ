@@ -72,7 +72,7 @@ struct VoiceCloningSetupView: View {
         FeatureGateView(feature: .voiceCloning) {
             NavigationStack {
                 ZStack {
-                    ThemeColors.backgroundGradient
+                    ThemeColors.primaryBackground
                         .ignoresSafeArea()
                     
                     ScrollView {
@@ -1072,7 +1072,7 @@ struct VoiceCloningSetupView: View {
             do {
                 try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
             } catch {
-                print("Failed to deactivate audio session: \(error)")
+               
             }
             
             if let fft = fftSetup {
@@ -1218,10 +1218,6 @@ struct VoiceCloningSetupView: View {
                         processingError = userFriendlyError
                         processingMessage = userFriendlyError.localizedDescription
                         
-                        // Log technical error for debugging
-                        if Config.isDebugMode {
-                            print("❌ Voice cloning technical error: \(error)")
-                        }
                     }
                 }
             }
@@ -1254,10 +1250,6 @@ struct VoiceCloningSetupView: View {
                     
                     let testText = "Hello! This is your personalized voice speaking. You're doing great on your emotional wellness journey."
                     
-                    if Config.isDebugMode {
-                        print("🎤 Testing voice with ID: \(voiceProfile.id)")
-                        print("📝 Test text: \(testText)")
-                    }
                     
                     // Generate speech using the cloned voice ID
                     let audioURL = try await ElevenLabsService.shared.generateSpeech(
@@ -1289,17 +1281,11 @@ struct VoiceCloningSetupView: View {
                     player.prepareToPlay()
                     player.play()
                     
-                    if Config.isDebugMode {
-                        print("✅ Voice test audio playing successfully")
-                    }
                     
                 } catch {
                     await MainActor.run {
                         isTestingVoice = false
                         isPlayingAudio = false
-                        if Config.isDebugMode {
-                            print("❌ Voice test failed: \(error)")
-                        }
                         handleVoiceTestError(error)
                     }
                 }
@@ -1324,9 +1310,6 @@ struct VoiceCloningSetupView: View {
         
         private func handleVoiceTestError(_ error: Error) {
             // Log the technical error for debugging
-            if Config.isDebugMode {
-                print("❌ Voice test technical error: \(error)")
-            }
             
             // Map technical errors to user-friendly messages
             let userFriendlyError: VoiceCloningError
@@ -1476,9 +1459,6 @@ struct VoiceCloningSetupView: View {
                 
             } catch {
                 // Log the specific error for debugging
-                if Config.isDebugMode {
-                    print("❌ Audio session setup failed: \(error)")
-                }
                 
                 // Try to retry if we haven't exceeded max retries
                 if environmentCheckRetryCount < maxEnvironmentCheckRetries {
@@ -1709,7 +1689,7 @@ struct VoiceCloningSetupView: View {
             do {
                 try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
             } catch {
-                print("Failed to deactivate audio session: \(error)")
+                
             }
         }
         

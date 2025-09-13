@@ -4,9 +4,6 @@
 //
 //  Created by Temiloluwa on 25-08-2025.
 //
-//  Production-ready user behavior analyzer for ML-powered notification optimization and haptic integration
-//
-
 import Foundation
 import CoreML
 import Combine
@@ -38,7 +35,7 @@ class UserBehaviorAnalyzer: ObservableObject {
         static let patternUpdateInterval: TimeInterval = 3600 // 1 hour
         static let minDataPointsForAnalysis = 20
         static let engagementDecayFactor: Double = 0.95 // Daily decay
-        static let isDebugMode = true // Set to false for production
+        static let isDebugMode = false // Set to false for production
     }
     
     // MARK: - Initialization
@@ -642,9 +639,7 @@ class UserBehaviorAnalyzer: ObservableObject {
                 )
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to load behavior data: \(error)")
-            }
+
         }
         
         // Load emotion history with limit
@@ -670,9 +665,7 @@ class UserBehaviorAnalyzer: ObservableObject {
                 )
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to load emotion history: \(error)")
-            }
+
         }
         
         // Load notification engagement history with limit
@@ -700,14 +693,9 @@ class UserBehaviorAnalyzer: ObservableObject {
                 )
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to load notification engagement history: \(error)")
-            }
+
         }
         
-        if Config.isDebugMode {
-            print("✅ Loaded \(behaviorData.count) behavior data points (limited to 1000), \(emotionHistory.count) emotion records (limited to 1000), \(notificationEngagementHistory.count) engagement records (limited to 1000)")
-        }
     }
     
     private func saveBehaviorData() async {
@@ -721,9 +709,6 @@ class UserBehaviorAnalyzer: ObservableObject {
         userRequest.fetchLimit = 1
         
         guard let user = try? context.fetch(userRequest).first else {
-            if Config.isDebugMode {
-                print("❌ No user found for behavior data persistence")
-            }
             return
         }
         
@@ -761,13 +746,9 @@ class UserBehaviorAnalyzer: ObservableObject {
         // Save to Core Data
         do {
             try context.save()
-            if Config.isDebugMode {
-                print("💾 Behavior data saved successfully")
-            }
+
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to save behavior data: \(error)")
-            }
+
         }
         
         // Limit data size
@@ -797,21 +778,6 @@ class UserBehaviorAnalyzer: ObservableObject {
     }
     
     private func setupDataObservers() {
-        // Observe emotion analysis results
-        NotificationCenter.default.publisher(for: .emotionalDataSaved)
-            .sink { [weak self] notification in
-                if let result = notification.object as? EmotionAnalysisResult {
-                    Task { @MainActor in
-                        await self?.recordEmotionAnalysis(
-                            emotion: self?.convertEmotionCategoryToType(result.primaryEmotion) ?? .neutral,
-                            confidence: result.confidence,
-                            intensity: result.intensity.threshold,
-                            context: ["source": "voice_analysis"]
-                        )
-                    }
-                }
-            }
-            .store(in: &cancellables)
         
         // Observe app lifecycle events
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)

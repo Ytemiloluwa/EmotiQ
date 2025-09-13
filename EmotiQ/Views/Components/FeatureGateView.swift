@@ -63,7 +63,7 @@ struct FeatureLockedView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             
-            Button("Upgrade to Premium") {
+            Button("Upgrade to Pro/Premium") {
                 showingSubscriptionPaywall = true
             }
             .buttonStyle(.borderedProminent)

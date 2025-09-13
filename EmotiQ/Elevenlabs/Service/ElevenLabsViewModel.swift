@@ -197,7 +197,7 @@ class ElevenLabsViewModel: BaseViewModel {
                 await updateUsageStats(characterCount: text.count)
                 
             } catch {
-                print("Failed to generate audio for text: \(text), error: \(error)")
+ 
                 // Continue with other texts
             }
         }
@@ -244,7 +244,7 @@ class ElevenLabsViewModel: BaseViewModel {
             monthlyCharacterUsage = usage.characterCount
             characterLimit = usage.characterLimit
         } catch {
-            print("Failed to load usage stats: \(error)")
+           
         }
     }
     
@@ -279,7 +279,7 @@ class ElevenLabsViewModel: BaseViewModel {
                     voiceSettings = profile.settings
                 }
             } catch {
-                print("Failed to load voice profile: \(error)")
+               
             }
         }
     }
@@ -363,7 +363,6 @@ class ElevenLabsViewModel: BaseViewModel {
     // MARK: - Error Handling
     
     private func handleError(_ error: Error, context: String) async {
-        print("\(context): \(error)")
         
         if let elevenLabsError = error as? ElevenLabsModelError {
             switch elevenLabsError {

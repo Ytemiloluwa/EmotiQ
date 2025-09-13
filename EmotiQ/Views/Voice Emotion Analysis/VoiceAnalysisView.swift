@@ -15,11 +15,13 @@ struct VoiceAnalysisView: View {
     @EnvironmentObject private var subscriptionService: SubscriptionService
     // Navigation state is controlled by the ViewModel
     @State private var showingSubscriptionPaywall = false
+    @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
         NavigationStack {
             ZStack {
-                backgroundGradient
+                
+                ThemeColors.primaryBackground
                 
                 ScrollView {
                     VStack(spacing: 30) {
@@ -110,7 +112,7 @@ struct VoiceAnalysisView: View {
                 .fontWeight(.semibold)
                 .multilineTextAlignment(.center)
             
-            Text("Speak naturally for 2-120 seconds to analyze your emotional state")
+            Text("Speak naturally for 30-120 seconds to analyze your emotional state")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -345,9 +347,8 @@ struct RecordingTipsSection: View {
             
             VStack(alignment: .leading, spacing: 12) {
                 TipRow(icon: "mic", text: "Speak naturally in a quiet environment")
-                TipRow(icon: "timer", text: "Record for 2-120 seconds for best results")
+                TipRow(icon: "timer", text: "Record for 30-120 seconds for best results")
                 TipRow(icon: "speaker.wave.2", text: "Express your current feelings authentically")
-                TipRow(icon: "lock.shield", text: "Your voice is processed on your device")
             }
         }
         .padding()
@@ -386,6 +387,7 @@ struct VoiceAnalysisView_Previews: PreviewProvider {
         VoiceAnalysisView()
             .environmentObject(CoreMLEmotionService.shared)
             .environmentObject(SubscriptionService.shared)
+            .environmentObject(ThemeManager())
     }
 }
 

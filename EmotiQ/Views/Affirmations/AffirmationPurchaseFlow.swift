@@ -210,7 +210,7 @@ struct PurchaseStatusIndicator: View {
         AffirmationPurchaseButton(
             purchaseManager: AffirmationPurchaseFlowManager()
         ) {
-            print("Purchase button tapped")
+           
         }
     }
     .padding()
@@ -221,7 +221,7 @@ struct PurchaseStatusIndicator: View {
     manager.currentPurchaseStatus = .idle
     
     return AffirmationPurchaseButton(purchaseManager: manager) {
-        print("Purchase button tapped")
+      
     }
     .padding()
 }
@@ -231,7 +231,7 @@ struct PurchaseStatusIndicator: View {
     manager.currentPurchaseStatus = .purchasing
     
     return AffirmationPurchaseButton(purchaseManager: manager) {
-        print("Purchase button tapped")
+        
     }
     .padding()
 }
@@ -241,7 +241,7 @@ struct PurchaseStatusIndicator: View {
     manager.currentPurchaseStatus = .completed
     
     return AffirmationPurchaseButton(purchaseManager: manager) {
-        print("Purchase button tapped")
+      
     }
     .padding()
 }
@@ -251,7 +251,7 @@ struct PurchaseStatusIndicator: View {
     manager.currentPurchaseStatus = .failed("Network error")
     
     return AffirmationPurchaseButton(purchaseManager: manager) {
-        print("Purchase button tapped")
+        
     }
     .padding()
 }

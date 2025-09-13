@@ -100,9 +100,7 @@ class VoiceRecordingViewModel: ObservableObject {
                     }
                 },
                 receiveValue: { _ in
-                    if Config.isDebugMode {
-                        print("🎤 Recording started successfully")
-                    }
+
                 }
             )
             .store(in: &cancellables)
@@ -123,10 +121,7 @@ class VoiceRecordingViewModel: ObservableObject {
                 receiveValue: { [weak self] url in
                     self?.currentRecordingURL = url
                     self?.hasRecording = true
-                    
-                    if Config.isDebugMode {
-                        print("🎤 Recording saved: \(url.lastPathComponent)")
-                    }
+
                 }
             )
             .store(in: &cancellables)
@@ -146,9 +141,7 @@ class VoiceRecordingViewModel: ObservableObject {
         
         // Check if we're already processing
         guard !isLoading else {
-            if Config.isDebugMode {
-                print("⚠️ Analysis already in progress, ignoring duplicate request")
-            }
+
             return
         }
         
@@ -166,9 +159,6 @@ class VoiceRecordingViewModel: ObservableObject {
                 },
                 receiveValue: { [weak self] quality in
                     if quality.isAcceptable {
-                        if Config.isDebugMode {
-                            print("✅ Audio quality validated: \(quality.displayName)")
-                        }
                         self?.proceedWithAnalysis(url: url, quality: quality)
                     } else {
                         self?.isLoading = false
@@ -205,12 +195,6 @@ class VoiceRecordingViewModel: ObservableObject {
                     )
                     
                     // Log successful analysis for debugging
-                    if Config.isDebugMode {
-                        print("🎤 Emotion analysis completed successfully")
-                        print("📊 Primary emotion: \(result.primaryEmotion.displayName)")
-                        print("🎯 Confidence: \(String(format: "%.1f%%", result.confidence * 100))")
-                        print("⏱️ Session duration: \(String(format: "%.1f", result.sessionDuration))s")
-                    }
                 }
                 
             } catch {
@@ -228,9 +212,6 @@ class VoiceRecordingViewModel: ObservableObject {
                     self.showError(message: errorMessage)
                     
                     // Log error for debugging
-                    if Config.isDebugMode {
-                        print("❌ Emotion analysis failed: \(error)")
-                    }
                 }
             }
         }
@@ -246,8 +227,5 @@ class VoiceRecordingViewModel: ObservableObject {
         errorMessage = message
         showError = true
         
-        if Config.isDebugMode {
-            print("❌ Voice Recording Error: \(message)")
-        }
     }
 }

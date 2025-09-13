@@ -382,7 +382,7 @@ extension VoiceGuidedIntervention {
             voicePrompts: [
                 VoicePrompt(
                     id: "grounding_54321",
-                    text: "Let's ground yourself in this moment. Look around and name 5 things you can see... 4 things you can touch... 3 things you can hear... 2 things you can smell... and 1 thing you can taste. Take your time with each one.",
+                    text: "Let's ground yourself in this moment. Look around and name 5 things you can see, 4 things you can touch 3 things you can hear, 2 things you can smell and 1 thing you can taste. Take your time with each one.",
                     pauseDuration: 5.0,
                     emotionalTone: .calm,
                     speed: .normal
@@ -398,4 +398,3 @@ extension VoiceGuidedIntervention {
     static let allInterventions: [VoiceGuidedIntervention] =
         breathingExercises + emotionalPrompts + quickRelief
 }
-

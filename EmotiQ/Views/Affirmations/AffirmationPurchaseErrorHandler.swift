@@ -93,10 +93,7 @@ class AffirmationPurchaseErrorHandler {
     }
     
     static func logError(_ error: Error, context: String) {
-        if Config.isDebugMode {
-            print("❌ Purchase Error in \(context): \(error.localizedDescription)")
-            print("📋 Error details: \(error)")
-        }
+
     }
 }
 

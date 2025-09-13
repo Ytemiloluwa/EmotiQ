@@ -24,7 +24,7 @@ struct ProfileView: View {
         NavigationStack {
             ZStack {
                 // Background using ThemeColors
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -128,9 +128,9 @@ struct CompactProfileHeader: View {
                 
                 Spacer()
                 
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
+//                Image(systemName: "chevron.right")
+//                    .foregroundColor(.secondary)
+//                    .font(.caption)
             }
             .padding()
             .frame(maxWidth: .infinity)
@@ -363,7 +363,7 @@ struct FullWidthSettingsRow: View {
 @MainActor
 class ProfileViewModel: ObservableObject {
     @Published var displayName = "User"
-    @Published var memberSince = "Jan 2025"
+    @Published var memberSince = ""
     @Published var currentStreak = 0
     @Published var totalCheckIns = 0
     @Published var totalInsights = 0
@@ -465,9 +465,7 @@ class ProfileViewModel: ObservableObject {
         if let url = URL(string: "https://ytemiloluwa.github.io/privacy-policy.html") {
             UIApplication.shared.open(url)
         }
-        if Config.isDebugMode {
-            print("🔒 Opening privacy policy")
-        }
+
     }
     
     func requestAppReview() {
@@ -520,7 +518,7 @@ class ProfileViewModel: ObservableObject {
             let results = try persistenceController.container.viewContext.fetch(request)
             totalCheckIns = results.count
         } catch {
-            print("❌ Failed to fetch total check-ins: \(error)")
+          
             totalCheckIns = 0
         }
     }
@@ -534,7 +532,7 @@ class ProfileViewModel: ObservableObject {
             let emotionalData = try persistenceController.container.viewContext.fetch(request)
             currentStreak = calculateCurrentStreak(from: emotionalData)
         } catch {
-            print("❌ Failed to fetch emotional data for streak: \(error)")
+            
             currentStreak = 0
         }
     }
@@ -547,7 +545,7 @@ class ProfileViewModel: ObservableObject {
             let results = try persistenceController.container.viewContext.fetch(request)
             completedGoals = results.count
         } catch {
-            print("❌ Failed to fetch completed goals: \(error)")
+     
             completedGoals = 0
         }
     }
@@ -573,7 +571,7 @@ class ProfileViewModel: ObservableObject {
                 memberSince = formatter.string(from: Date())
             }
         } catch {
-            print("❌ Failed to fetch member since date: \(error)")
+           
             let formatter = DateFormatter()
             formatter.dateFormat = "MMM yyyy"
             memberSince = formatter.string(from: Date())
@@ -617,7 +615,7 @@ class ProfileViewModel: ObservableObject {
             
             totalInsights = uniqueInsights.count
         } catch {
-            print("❌ Failed to calculate total insights: \(error)")
+         
             totalInsights = 0
         }
     }
@@ -786,26 +784,31 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Edit Profile View
 struct EditProfileView: View {
     @ObservedObject var viewModel: ProfileViewModel
     @Environment(\.presentationMode) var presentationMode
     @State private var editedName: String = ""
+    @FocusState private var isNameFocused: Bool
     
     var body: some View {
         NavigationView {
-            Form {
-                Section("Profile Information") {
-                    HStack {
-                        Text("Name")
-                        TextField("Display Name", text: $editedName)
-                            .multilineTextAlignment(.trailing)
-                    }
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Name")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Display Name", text: $editedName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .focused($isNameFocused)
+                        .padding(.vertical, 4)
                 }
+                .padding()
+                
+                Spacer()
             }
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -825,9 +828,13 @@ struct EditProfileView: View {
         }
         .onAppear {
             editedName = viewModel.displayName
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isNameFocused = true // Automatically focuses the text field
+            }
         }
     }
 }
+
 
 // MARK: - Array Extension
 extension Array where Element: Hashable {

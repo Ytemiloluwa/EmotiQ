@@ -29,7 +29,7 @@ struct GoalDetailView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -359,8 +359,8 @@ struct MilestonesDetailSection: View {
 //        .sheet(isPresented: $showingAddMilestone) {
 //            AddMilestoneView(goal: goal, viewModel: viewModel)
 //        }
-        .onChange(of: goal.milestones) { newMilestones in
-            localMilestones = newMilestones.sorted(by: { $0.targetProgress < $1.targetProgress })
+        .onChange(of: goal.milestones) { oldValue, newValue in
+            localMilestones = newValue.sorted(by: { $0.targetProgress < $1.targetProgress })
         }
     }
     

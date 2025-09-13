@@ -4,7 +4,6 @@
 //
 //  Created by Temiloluwa on 06-09-2025.
 //
-
 import Foundation
 import Security
 import Combine
@@ -61,11 +60,10 @@ class SecurePurchaseManager: ObservableObject {
     
     /// Check if user can generate affirmations in AffirmationsView
     func canGenerateAffirmations(from origin: PurchaseOrigin) async -> Bool {
-        print("🔍 SecurePurchaseManager: canGenerateAffirmations called for \(origin.displayName)")
         
         // First check if user has ANY subscription (Premium/Pro)
         guard await validateWithRevenueCat() else {
-            print("❌ SecurePurchaseManager: \(origin.displayName) - No valid subscription, free users get nothing")
+
             return false
         }
         
@@ -75,114 +73,103 @@ class SecurePurchaseManager: ObservableObject {
         case .affirmationsView:
             if hasLifetimeAccess {
                 result = true
-                print("🔍 SecurePurchaseManager: AffirmationsView - Lifetime access, can generate")
+             
             } else if hasPackAccess {
                 // Pack users get ONLY pack usage (10 generations)
                 result = sharedPackUsage < maxPackUsage
-                print("🔍 SecurePurchaseManager: AffirmationsView - Pack access, pack usage: \(sharedPackUsage)/\(maxPackUsage), can generate: \(result)")
+
             } else {
                 // Free users and premium/pro users get free usage
                 result = affirmationsViewUsage < maxFreeUsage
-                print("🔍 SecurePurchaseManager: AffirmationsView - Free tier, usage: \(affirmationsViewUsage)/\(maxFreeUsage), can generate: \(result)")
+
             }
         case .customAffirmationCreator:
             if hasLifetimeAccess {
                 result = true
-                print("🔍 SecurePurchaseManager: CustomAffirmationCreator - Lifetime access, can generate")
+   
             } else if hasPackAccess {
                 // Pack users get ONLY pack usage (10 generations)
                 result = sharedPackUsage < maxPackUsage
-                print("🔍 SecurePurchaseManager: CustomAffirmationCreator - Pack access, pack usage: \(sharedPackUsage)/\(maxPackUsage), can generate: \(result)")
+
             } else {
                 // Free users and premium/pro users get free usage
                 result = customAffirmationUsage < maxFreeUsage
-                print("🔍 SecurePurchaseManager: CustomAffirmationCreator - Free tier, usage: \(customAffirmationUsage)/\(maxFreeUsage), can generate: \(result)")
+
             }
         }
         
-        print("🔍 SecurePurchaseManager: Final canGenerate result for \(origin.displayName): \(result)")
         return result
     }
     
     /// Check if user needs to purchase more
     func needsToPurchase(from origin: PurchaseOrigin) async -> Bool {
-        print("🔍 SecurePurchaseManager: needsToPurchase called for \(origin.displayName)")
+    
         
         let canGenerate = await canGenerateAffirmations(from: origin)
         let needsPurchase = !canGenerate
-        
-        print("🔍 SecurePurchaseManager: \(origin.displayName) - canGenerate: \(canGenerate), needsPurchase: \(needsPurchase)")
+    
         
         return needsPurchase
     }
     
     /// Get remaining uses for a specific origin
     func getRemainingUses(for origin: PurchaseOrigin) async -> Int {
-        print("🔍 SecurePurchaseManager: getRemainingUses called for \(origin.displayName)")
+   
         
         // First check if user has ANY subscription (Premium/Pro)
         guard await validateWithRevenueCat() else {
-            print("❌ SecurePurchaseManager: \(origin.displayName) - No valid subscription, free users get 0 remaining")
+
             return 0
         }
         
         let result: Int
         if hasLifetimeAccess {
             result = -1  // -1 means unlimited, no count needed
-            print("🔍 SecurePurchaseManager: \(origin.displayName) - Lifetime access, unlimited")
+        
         } else if hasPackAccess {
-            // Pack users get ONLY pack usage (10 generations)
+    
             result = max(0, maxPackUsage - sharedPackUsage)
-            print("🔍 SecurePurchaseManager: \(origin.displayName) - Pack access, pack remaining: \(result)/\(maxPackUsage)")
         } else {
             // Free users and premium/pro users get free usage
             switch origin {
             case .affirmationsView:
                 result = max(0, maxFreeUsage - affirmationsViewUsage)
-                print("🔍 SecurePurchaseManager: \(origin.displayName) - Free tier, usage: \(affirmationsViewUsage)/\(maxFreeUsage), remaining: \(result)")
             case .customAffirmationCreator:
                 result = max(0, maxFreeUsage - customAffirmationUsage)
-                print("🔍 SecurePurchaseManager: \(origin.displayName) - Free tier, usage: \(customAffirmationUsage)/\(maxFreeUsage), remaining: \(result)")
+
             }
         }
         
-        print("🔍 SecurePurchaseManager: \(origin.displayName) - Final remaining uses: \(result)")
         return result
     }
     
     /// Increment usage for a specific origin
     func incrementUsage(for origin: PurchaseOrigin) async {
-        print("🔍 SecurePurchaseManager: incrementUsage called for \(origin.displayName)")
-        
-        guard await validateWithRevenueCat() else {
-            print("❌ SecurePurchaseManager: RevenueCat validation failed - cannot increment usage")
-            return
-        }
-        
-        print("🔍 SecurePurchaseManager: \(origin.displayName) - Current state - Lifetime: \(hasLifetimeAccess), Pack: \(hasPackAccess)")
+   
+        guard await validateWithRevenueCat() else { return }
         
         switch origin {
         case .affirmationsView:
             if hasLifetimeAccess {
-                print("🔍 SecurePurchaseManager: AffirmationsView - Lifetime access, no tracking needed")
+               
                 return // No tracking needed for lifetime
             } else if hasPackAccess {
                 sharedPackUsage += 1
-                print("📦 SecurePurchaseManager: AffirmationsView - Incremented shared pack usage to \(sharedPackUsage)")
+
             } else {
                 affirmationsViewUsage += 1
-                print("📊 SecurePurchaseManager: AffirmationsView - Incremented free usage to \(affirmationsViewUsage)")
+
             }
         case .customAffirmationCreator:
             if hasLifetimeAccess {
-                print("🔍 SecurePurchaseManager: CustomAffirmationCreator - Lifetime access, no tracking needed")
+                
                 return // No tracking needed for lifetime
             } else if hasPackAccess {
                 sharedPackUsage += 1
-                print("📦 SecurePurchaseManager: CustomAffirmationCreator - Incremented shared pack usage to \(sharedPackUsage)")
+
             } else {
                 customAffirmationUsage += 1
-                print("📊 SecurePurchaseManager: CustomAffirmationCreator - Incremented free usage to \(customAffirmationUsage)")
+
             }
         }
         
@@ -204,7 +191,7 @@ class SecurePurchaseManager: ObservableObject {
         saveSecureData()
         await trackPurchaseOnServer(plan: .lifetime)
         
-        print("✅ Lifetime access activated securely")
+    
     }
     
     /// Activate pack access
@@ -218,7 +205,6 @@ class SecurePurchaseManager: ObservableObject {
         saveSecureData()
         await trackPurchaseOnServer(plan: .pack)
         
-        print("✅ Pack access activated securely")
     }
     
     /// Reset usage for testing or pack activation
@@ -228,7 +214,7 @@ class SecurePurchaseManager: ObservableObject {
         sharedPackUsage = 0
         
         saveSecureData()
-        print("🔄 Usage reset securely")
+
     }
     
     /// Set purchase origin for navigation tracking
@@ -245,13 +231,12 @@ class SecurePurchaseManager: ObservableObject {
     // MARK: - Private Methods
     
     /// Validate with RevenueCat (secure validation)
-    private func validateWithRevenueCat() async -> Bool {
+    func validateWithRevenueCat() async -> Bool {
         do {
-            print("🔍 SecurePurchaseManager: Starting RevenueCat validation...")
             
             // Check if RevenueCat is configured
             guard RevenueCatService.shared.isConfigured else {
-                print("⚠️ SecurePurchaseManager: RevenueCat not configured yet, waiting for callback...")
+              
                 
                 // Wait for configuration to complete using callback
                 return await withCheckedContinuation { continuation in
@@ -269,48 +254,50 @@ class SecurePurchaseManager: ObservableObject {
                     .sink(
                         receiveCompletion: { completion in
                             if case .failure(let error) = completion {
-                                print("❌ SecurePurchaseManager: RevenueCat getCustomerInfo failed: \(error)")
+                          
                                 continuation.resume(throwing: error)
                             }
                         },
                         receiveValue: { customerInfo in
-                            print("✅ SecurePurchaseManager: RevenueCat getCustomerInfo success")
+   
                             continuation.resume(returning: customerInfo)
                         }
                     )
                     .store(in: &cancellables)
             }
             
-            // 🔹 Non-consumables (check entitlements defined in RevenueCat dashboard)
+            // 🔹 Non-consumables (check entitlements - can be restored)
             let hasLifetime = customerInfo.entitlements.all["unlimited_affirmations"]?.isActive == true
-            let hasPack = customerInfo.entitlements.all["affirmation_pack_10"]?.isActive == true
             
             // 🔹 Premium/Pro subscriptions
             let hasPremium = customerInfo.activeSubscriptions.contains("emotiq_premium_monthly")
             let hasPro = customerInfo.activeSubscriptions.contains("emotiq_pro_monthly")
             
-            print("🔍 SecurePurchaseManager: RevenueCat entitlements - Lifetime: \(hasLifetime), Pack: \(hasPack)")
-            print("🔍 SecurePurchaseManager: RevenueCat subscriptions - Premium: \(hasPremium), Pro: \(hasPro)")
+            // 🔹 Consumables (check product identifier in purchase history)
+            // Consumables cannot be validated via entitlements or restore
+            let hasPackPurchase = customerInfo.nonSubscriptions.contains { transaction in
+                transaction.productIdentifier == "affirmation_pack_10"
+            }
+            
             
             // Update local state to match RevenueCat
-            hasLifetimeAccess = hasLifetime
-            hasPackAccess = hasPack
+            hasLifetimeAccess = hasLifetime  // Non-consumable: check entitlements
+            hasPackAccess = hasPackPurchase  // Consumable: check product identifier
             hasPremiumAccess = hasPremium
             hasProAccess = hasPro
             
             // Get all active subscriptions and entitlements for debugging
             let allActiveSubscriptions = customerInfo.activeSubscriptions
             let allEntitlements = customerInfo.entitlements.all.keys
-            print("🔍 SecurePurchaseManager: All active subscriptions: \(allActiveSubscriptions)")
-            print("🔍 SecurePurchaseManager: All entitlements: \(allEntitlements)")
+            let allNonSubscriptionTransactions = customerInfo.nonSubscriptions.map { $0.productIdentifier }
             
-            // Check if user has any valid subscription OR entitlement
-            let hasValidSubscription = hasLifetime || hasPack || hasPremium || hasPro
-            print("🔍 SecurePurchaseManager: Final validation result: \(hasValidSubscription)")
+            // Check if user has any valid subscription OR entitlement OR consumable purchase
+            let hasValidSubscription = hasLifetime || hasPremium || hasPro || hasPackPurchase
+
             
             return hasValidSubscription
         } catch {
-            print("❌ SecurePurchaseManager: RevenueCat validation failed: \(error)")
+
             return false
         }
     }
@@ -345,7 +332,7 @@ class SecurePurchaseManager: ObservableObject {
             let encodedData = try encoder.encode(data)
             try saveToKeychain(encodedData, forKey: "purchase_data")
         } catch {
-            print("❌ Failed to save purchase data to Keychain: \(error)")
+           
         }
     }
     
@@ -365,9 +352,9 @@ class SecurePurchaseManager: ObservableObject {
             hasProAccess = purchaseData.hasProAccess
             lastPurchaseOrigin = PurchaseOrigin(rawValue: purchaseData.lastPurchaseOrigin ?? "")
             
-            print("✅ Loaded secure purchase data")
+        
         } catch {
-            print("ℹ️ No existing purchase data found, starting fresh")
+            
         }
     }
     
@@ -414,17 +401,12 @@ class SecurePurchaseManager: ObservableObject {
     /// Track usage on server (placeholder for production)
     private func trackUsageOnServer(for origin: PurchaseOrigin) async {
         // TODO: Implement server-side usage tracking
-        if Config.isDebugMode {
-            print("📊 Usage tracked on server for \(origin.displayName)")
-        }
     }
     
     /// Track purchase on server (placeholder for production)
     private func trackPurchaseOnServer(plan: AffirmationPlan) async {
         // TODO: Implement server-side purchase tracking
-        if Config.isDebugMode {
-            print("💰 Purchase tracked on server for \(plan.title)")
-        }
+
     }
 }
 

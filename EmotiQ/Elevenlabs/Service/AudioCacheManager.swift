@@ -77,6 +77,7 @@ class AudioCacheManager: ObservableObject {
         let cacheKey = generateCacheKey(text: text, emotion: emotion, voiceId: voiceId)
         
         guard let cachedItem = audioCache[cacheKey] else {
+
             return nil
         }
         
@@ -98,8 +99,9 @@ class AudioCacheManager: ObservableObject {
     /// Cache audio data for given parameters
     func cacheAudio(data: Data, text: String, emotion: EmotionType, voiceId: String?) async throws -> URL {
         let cacheKey = generateCacheKey(text: text, emotion: emotion, voiceId: voiceId)
-        let fileName = "\(cacheKey).mp3"
-        let fileURL = cacheDirectory.appendingPathComponent(fileName)
+        let shortFileName = generateShortFileName(for: cacheKey)
+        let fileURL = cacheDirectory.appendingPathComponent(shortFileName)
+        
         
         // Write audio data to file
         try data.write(to: fileURL)
@@ -118,6 +120,7 @@ class AudioCacheManager: ObservableObject {
         
         // Add to cache
         audioCache[cacheKey] = cacheItem
+        
         
         // Update cache metrics
         await updateCacheMetrics()
@@ -155,7 +158,7 @@ class AudioCacheManager: ObservableObject {
                     stability: 0.8
                 )
             } catch {
-                print("Failed to preload affirmation: \(error)")
+            
             }
             
             // Small delay to avoid rate limiting
@@ -176,7 +179,7 @@ class AudioCacheManager: ObservableObject {
                     stability: 0.9
                 )
             } catch {
-                print("Failed to preload prompt: \(error)")
+                
             }
             
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -194,7 +197,7 @@ class AudioCacheManager: ObservableObject {
                 try fileManager.removeItem(at: file)
             }
         } catch {
-            print("Failed to clear cache: \(error)")
+         
         }
         
         // Clear in-memory cache
@@ -231,12 +234,19 @@ class AudioCacheManager: ObservableObject {
         return baseString.data(using: .utf8)?.base64EncodedString() ?? UUID().uuidString
     }
     
+    private func generateShortFileName(for cacheKey: String) -> String {
+        // Create a short, safe filename using hash of the cache key
+        let hash = cacheKey.hashValue
+        let safeHash = abs(hash) // Ensure positive number
+        return "\(safeHash).mp3"
+    }
+    
     private func createCacheDirectoryIfNeeded() {
         if !fileManager.fileExists(atPath: cacheDirectory.path) {
             do {
                 try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
             } catch {
-                print("Failed to create cache directory: \(error)")
+              
             }
         }
     }
@@ -264,7 +274,7 @@ class AudioCacheManager: ObservableObject {
             }
             
         } catch {
-            print("Failed to load cache index: \(error)")
+      
         }
     }
     
@@ -280,7 +290,7 @@ class AudioCacheManager: ObservableObject {
             
             try data.write(to: indexURL)
         } catch {
-            print("Failed to save cache index: \(error)")
+           
         }
     }
     
@@ -296,7 +306,7 @@ class AudioCacheManager: ObservableObject {
                 do {
                     try fileManager.removeItem(at: item.fileURL)
                 } catch {
-                    print("Failed to remove expired cache file: \(error)")
+                    
                 }
             }
         }
@@ -332,7 +342,7 @@ class AudioCacheManager: ObservableObject {
             do {
                 try fileManager.removeItem(at: item.fileURL)
             } catch {
-                print("Failed to remove cache file during cleanup: \(error)")
+                
             }
         }
         

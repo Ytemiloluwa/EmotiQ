@@ -37,29 +37,19 @@ struct PersistenceController {
         }
         
         container.loadPersistentStores(completionHandler: { (storeDescription, error) in
-            if let error = error as NSError? {
+            if let _ = error as NSError? {
                 // Handle different types of Core Data errors
-                if Config.isDebugMode {
-                    print("❌ Core Data Error: \(error)")
-                    print("   Description: \(error.localizedDescription)")
-                    print("   User Info: \(error.userInfo)")
-                }
                 
                 // In production, you might want to handle this more gracefully
                 // For now, we'll crash in debug but handle gracefully in production
-                if Config.isDebugMode {
-                    fatalError("Unresolved Core Data error \(error), \(error.userInfo)")
-                } else {
-                    // Log error to crash reporting service
-                    print("Core Data failed to load: \(error.localizedDescription)")
-                }
+//                if Config.isDebugMode {
+//                    fatalError("Unresolved Core Data error \(error), \(error.userInfo)")
+//                } else {
+//                    // Log error to crash reporting service
+//
+//                }
             } else {
-                if Config.isDebugMode {
-                    print("✅ Core Data loaded successfully")
-                    if Config.CoreData.enableCloudKit {
-                        print("   CloudKit sync enabled")
-                    }
-                }
+
             }
         })
         
@@ -81,9 +71,7 @@ struct PersistenceController {
                 object: container.persistentStoreCoordinator,
                 queue: .main
             ) { _ in
-                if Config.isDebugMode {
-                    print("🔄 Remote Core Data changes detected")
-                }
+
             }
         }
     }
@@ -95,21 +83,17 @@ struct PersistenceController {
         if context.hasChanges {
             do {
                 try context.save()
-                if Config.isDebugMode {
-                    print("💾 Core Data saved successfully")
-                }
+
             } catch {
-                let nsError = error as NSError
-                if Config.isDebugMode {
-                    print("❌ Core Data save error: \(nsError)")
-                }
+                let _ = error as NSError
+
                 
                 // In production, handle this more gracefully
-                if Config.isDebugMode {
-                    fatalError("Unresolved save error \(nsError), \(nsError.userInfo)")
-                } else {
-                    print("Failed to save Core Data: \(nsError.localizedDescription)")
-                }
+//                if Config.isDebugMode {
+//                    fatalError("Unresolved save error \(nsError), \(nsError.userInfo)")
+//                } else {
+//                    
+//                }
             }
         }
     }
@@ -130,9 +114,7 @@ struct PersistenceController {
             let users = try container.viewContext.fetch(request)
             return users.first
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch current user: \(error)")
-            }
+
             return nil
         }
     }
@@ -156,9 +138,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("👤 New user created with ID: \(newUser.id?.uuidString ?? "unknown")")
-        }
         
         return newUser
     }
@@ -185,9 +164,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("🔄 Migrated user to weekly model: weeklyCheckInsUsed=\(user.weeklyCheckInsUsed), weekStartDate=\(user.weekStartDate?.description ?? "nil")")
-        }
     }
     
     // MARK: - Weekly Usage Reset Logic
@@ -211,9 +187,7 @@ struct PersistenceController {
         user.weekStartDate = Date()
         save()
         
-        if Config.isDebugMode {
-            print("🔄 Weekly usage reset for user: \(user.id?.uuidString ?? "unknown")")
-        }
+
     }
     
     // MARK: - Weekly Usage Management (New Implementation)
@@ -271,9 +245,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("📊 Weekly usage incremented: \(user.weeklyCheckInsUsed)/\(Config.Subscription.freeWeeklyLimit)")
-        }
     }
     
     func incrementDailyUsage(for user: User) {
@@ -281,9 +252,6 @@ struct PersistenceController {
         user.lastCheckInDate = Date()
         save()
         
-        if Config.isDebugMode {
-            print("📊 Daily usage incremented: \(user.dailyCheckInsUsed)/\(Config.Subscription.freeDailyLimit)")
-        }
     }
     
     // MARK: - Emotional Data Management
@@ -302,17 +270,12 @@ struct PersistenceController {
                 let encoder = JSONEncoder()
                 entity.voiceFeaturesData = try encoder.encode(voiceFeatures)
             } catch {
-                if Config.isDebugMode {
-                    print("❌ Failed to encode voice features: \(error)")
-                }
+
             }
         }
         
         save()
-        
-        if Config.isDebugMode {
-            print("💭 Emotional data saved: \(emotionalData.primaryEmotion.displayName) (\(String(format: "%.1f", emotionalData.confidence * 100))% confidence)")
-        }
+    
     }
     
     // MARK: - Data Cleanup
@@ -328,13 +291,8 @@ struct PersistenceController {
             try container.viewContext.execute(deleteRequest)
             save()
             
-            if Config.isDebugMode {
-                print("🗑️ Deleted emotional data older than \(days) days")
-            }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to delete old data: \(error)")
-            }
+
         }
     }
     
@@ -366,10 +324,10 @@ struct PersistenceController {
             
             if !duplicatesToDelete.isEmpty {
                 try container.viewContext.save()
-                print("🧹 Cleaned up \(duplicatesToDelete.count) duplicate emotional data records")
+            
             }
         } catch {
-            print("❌ Failed to cleanup duplicate emotional data: \(error)")
+           
         }
     }
 
@@ -404,9 +362,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("🎯 Goal saved: \(goal.title)")
-        }
     }
     
     func fetchGoals(for user: User) -> [GoalEntity] {
@@ -417,9 +372,6 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch goals: \(error)")
-            }
             return []
         }
     }
@@ -438,14 +390,9 @@ struct PersistenceController {
                 }
                 save()
                 
-                if Config.isDebugMode {
-                    print("📈 Goal progress updated: \(String(format: "%.1f", progress * 100))%")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to update goal progress: \(error)")
-            }
+
         }
     }
     
@@ -464,9 +411,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("🧘 Intervention completed: \(completion.title)")
-        }
     }
     
     func fetchInterventionCompletions(for user: User, limit: Int = 50) -> [InterventionCompletionEntity] {
@@ -478,9 +422,7 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch intervention completions: \(error)")
-            }
+
             return []
         }
     }
@@ -501,9 +443,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("💡 Coaching recommendation saved: \(recommendation.title)")
-        }
     }
     
     func fetchCoachingRecommendations(for user: User) -> [CoachingRecommendationEntity] {
@@ -514,9 +453,7 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch coaching recommendations: \(error)")
-            }
+
             return []
         }
     }
@@ -532,14 +469,9 @@ struct PersistenceController {
                 recommendation.completedAt = Date()
                 save()
                 
-                if Config.isDebugMode {
-                    print("✅ Recommendation marked completed: \(recommendation.title ?? "Unknown")")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to mark recommendation completed: \(error)")
-            }
+
         }
     }
     
@@ -558,9 +490,7 @@ struct PersistenceController {
                 existingProfile.isActive = false
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to deactivate existing voice profiles: \(error)")
-            }
+
         }
         
         // Create new profile entity
@@ -580,9 +510,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("🎤 Voice profile saved: \(name)")
-        }
     }
     
     func getActiveVoiceProfile(for user: User) -> VoiceProfileEntity? {
@@ -594,9 +521,6 @@ struct PersistenceController {
             let entities = try container.viewContext.fetch(request)
             return entities.first
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch active voice profile: \(error)")
-            }
             return nil
         }
     }
@@ -609,9 +533,6 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch voice profiles: \(error)")
-            }
             return []
         }
     }
@@ -629,14 +550,9 @@ struct PersistenceController {
                 profile.useSpeakerBoost = useSpeakerBoost
                 save()
                 
-                if Config.isDebugMode {
-                    print("🔧 Voice profile settings updated")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to update voice profile settings: \(error)")
-            }
+
         }
     }
     
@@ -651,13 +567,8 @@ struct PersistenceController {
             }
             save()
             
-            if Config.isDebugMode {
-                print("🗑️ Voice profile deleted")
-            }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to delete voice profile: \(error)")
-            }
+
         }
     }
     
@@ -680,9 +591,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("✨ Affirmation saved: \(text.prefix(50))...")
-        }
     }
     
     func getAffirmations(for user: User, category: String? = nil) -> [AffirmationEntity] {
@@ -699,9 +607,7 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch affirmations: \(error)")
-            }
+
             return []
         }
     }
@@ -714,9 +620,7 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch favorite affirmations: \(error)")
-            }
+
             return []
         }
     }
@@ -732,14 +636,9 @@ struct PersistenceController {
                 affirmation.lastPlayedAt = Date()
                 save()
                 
-                if Config.isDebugMode {
-                    print("▶️ Affirmation play count updated: \(affirmation.playCount)")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to update affirmation play count: \(error)")
-            }
+
         }
     }
     
@@ -753,14 +652,9 @@ struct PersistenceController {
                 affirmation.effectivenessRating = Int16(rating)
                 save()
                 
-                if Config.isDebugMode {
-                    print("⭐ Affirmation rating updated: \(rating)/5")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to update affirmation rating: \(error)")
-            }
+
         }
     }
     
@@ -774,14 +668,9 @@ struct PersistenceController {
                 affirmation.isFavorite.toggle()
                 save()
                 
-                if Config.isDebugMode {
-                    print("❤️ Affirmation favorite toggled: \(affirmation.isFavorite)")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to toggle affirmation favorite: \(error)")
-            }
+
         }
     }
     
@@ -796,13 +685,9 @@ struct PersistenceController {
             }
             save()
             
-            if Config.isDebugMode {
-                print("🗑️ Affirmation deleted")
-            }
+
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to delete affirmation: \(error)")
-            }
+
         }
     }
     
@@ -836,9 +721,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("🎤 Voice-guided intervention completed: \(interventionTitle)")
-        }
     }
     
     func getVoiceGuidedInterventionCompletions(for user: User, limit: Int = 20) -> [InterventionCompletionEntity] {
@@ -850,9 +732,6 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch voice-guided intervention completions: \(error)")
-            }
             return []
         }
     }
@@ -887,9 +766,6 @@ struct PersistenceController {
         
         save()
         
-        if Config.isDebugMode {
-            print("🎯 Coaching session saved: \(sessionType) (\(wasVoiceGuided ? "Voice-Guided" : "Standard"))")
-        }
     }
     
     func getCoachingSessions(for user: User, voiceGuidedOnly: Bool = false, limit: Int = 20) -> [CoachingSessionEntity] {
@@ -907,9 +783,6 @@ struct PersistenceController {
         do {
             return try container.viewContext.fetch(request)
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to fetch coaching sessions: \(error)")
-            }
             return []
         }
     }
@@ -933,9 +806,7 @@ extension EmotionalDataEntity {
                 let decoder = JSONDecoder()
                 voiceFeatures = try decoder.decode(VoiceFeatures.self, from: voiceFeaturesData)
             } catch {
-                if Config.isDebugMode {
-                    print("❌ Failed to decode voice features: \(error)")
-                }
+
             }
         }
         

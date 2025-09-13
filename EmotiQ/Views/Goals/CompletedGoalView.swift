@@ -280,7 +280,7 @@ class CompletedGoalViewModel: ObservableObject {
     
     func loadCompletedGoals() {
         guard let user = persistenceController.getCurrentUser() else {
-            print("❌ No current user found")
+     
             return
         }
         
@@ -335,9 +335,9 @@ class CompletedGoalViewModel: ObservableObject {
                 )
             }
             
-            print("✅ Loaded \(completedGoals.count) completed goals")
+       
         } catch {
-            print("❌ Failed to fetch completed goals: \(error)")
+         
             completedGoals = []
         }
     }

@@ -31,7 +31,7 @@ class HapticManager: ObservableObject {
     
     private func setupHapticEngine() {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
-            print("Device doesn't support haptics")
+        
             return
         }
         
@@ -41,21 +41,21 @@ class HapticManager: ObservableObject {
             
             // Handle engine reset
             hapticEngine?.resetHandler = { [weak self] in
-                print("Haptic engine reset")
+          
                 do {
                     try self?.hapticEngine?.start()
                 } catch {
-                    print("Failed to restart haptic engine: \(error)")
+             
                 }
             }
             
             // Handle engine stopped
             hapticEngine?.stoppedHandler = { reason in
-                print("Haptic engine stopped: \(reason)")
+          
             }
             
         } catch {
-            print("Failed to create haptic engine: \(error)")
+            
         }
     }
     
@@ -510,7 +510,7 @@ class HapticManager: ObservableObject {
             let player = try engine.makePlayer(with: pattern)
             try player.start(atTime: 0)
         } catch {
-            print("Failed to play haptic pattern: \(error)")
+        
             // Fallback to basic haptic
             impact(.medium)
         }

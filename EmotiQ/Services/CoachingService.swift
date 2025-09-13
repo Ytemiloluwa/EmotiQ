@@ -36,7 +36,7 @@ class CoachingService: ObservableObject {
     
     /// Generates personalized coaching recommendations based on recent emotions
     func generateRecommendations(for emotions: [EmotionAnalysisResult]) async -> [CoachingRecommendation] {
-        print("🧠 Generating coaching recommendations for \(emotions.count) emotions")
+        
         
         // Analyze emotion patterns
         let emotionPattern = analyzeEmotionPattern(emotions)
@@ -70,20 +70,19 @@ class CoachingService: ObservableObject {
         // Update published property
         currentRecommendations = finalRecommendations
         
-        print("✅ Generated \(finalRecommendations.count) coaching recommendations")
         return finalRecommendations
     }
     
     /// Creates a new emotional goal for the user
     func createGoal(_ goal: EmotionalGoal) async {
-        print("🎯 Creating new goal: \(goal.title)")
+       
         
         // Save to Core Data
         let context = persistenceController.container.viewContext
         
         // Get current user
         guard let currentUser = persistenceController.getCurrentUser() else {
-            print("❌ No current user found")
+         
             return
         }
         
@@ -114,15 +113,14 @@ class CoachingService: ObservableObject {
         do {
             try context.save()
             userGoals.append(goal)
-            print("✅ Goal saved successfully with \(goal.milestones.count) milestones")
+           
         } catch {
-            print("❌ Failed to save goal: \(error)")
+           
         }
     }
     
     /// Deletes a goal
     func deleteGoal(_ goalId: UUID) async {
-        print("🗑️ Deleting goal: \(goalId)")
         
         // Remove from memory
         userGoals.removeAll { $0.id == goalId }
@@ -138,15 +136,15 @@ class CoachingService: ObservableObject {
                 context.delete(goalEntity)
             }
             try context.save()
-            print("✅ Goal deleted successfully")
+            
         } catch {
-            print("❌ Failed to delete goal: \(error)")
+           
         }
     }
     
     /// Marks a milestone as complete
     func markMilestoneComplete(_ goalId: UUID, milestoneId: UUID) async {
-        print("✅ Marking milestone complete: \(milestoneId)")
+      
         
         // Update in memory
         if let goalIndex = userGoals.firstIndex(where: { $0.id == goalId }),
@@ -166,19 +164,19 @@ class CoachingService: ObservableObject {
                 milestoneEntity.isCompleted = true
                 milestoneEntity.completedAt = Date()
                 try context.save()
-                print("✅ Milestone marked complete successfully")
+                
                 
                 // Post notification for milestone completion
                 NotificationCenter.default.post(name: .milestoneCompleted, object: milestoneEntity)
             }
         } catch {
-            print("❌ Failed to mark milestone complete: \(error)")
+         
         }
     }
     
     /// Adds a new milestone to a goal
     func addMilestone(_ goalId: UUID, title: String, description: String, targetProgress: Double) async {
-        print("➕ Adding milestone: \(title)")
+    
         
         let newMilestone = GoalMilestone(
             title: title,
@@ -209,16 +207,16 @@ class CoachingService: ObservableObject {
                 milestoneEntity.goal = goalEntity
                 
                 try context.save()
-                print("✅ Milestone added successfully")
+            
             }
         } catch {
-            print("❌ Failed to add milestone: \(error)")
+         
         }
     }
     
     /// Updates progress for a specific goal
     func updateGoalProgress(_ goalId: UUID, progress: Double) async {
-        print("📈 Updating goal progress: \(progress)")
+     
         
         // Update in memory
         if let index = userGoals.firstIndex(where: { $0.id == goalId }) {
@@ -253,13 +251,13 @@ class CoachingService: ObservableObject {
                 updateProgressMetrics()
             }
         } catch {
-            print("❌ Failed to update goal progress: \(error)")
+         
         }
     }
     
     /// Records completion of an intervention
     func recordInterventionCompletion(_ intervention: QuickIntervention) async {
-        print("✅ Recording intervention completion: \(intervention.title)")
+        
         
         let completion = CompletedIntervention(
             id: UUID(),
@@ -287,7 +285,7 @@ class CoachingService: ObservableObject {
             try context.save()
             updateProgressMetrics()
         } catch {
-            print("❌ Failed to save intervention completion: \(error)")
+           
         }
     }
     
@@ -417,7 +415,7 @@ class CoachingService: ObservableObject {
                 )
             }
         } catch {
-            print("❌ Failed to load goals: \(error)")
+            
         }
     }
     
@@ -449,7 +447,7 @@ class CoachingService: ObservableObject {
                 )
             }
         } catch {
-            print("❌ Failed to load completed interventions: \(error)")
+           
         }
     }
     
@@ -698,7 +696,7 @@ class CoachingService: ObservableObject {
                     )
                 }
         } catch {
-            print("❌ Failed to fetch recent emotions: \(error)")
+          
             return []
         }
     }

@@ -51,14 +51,14 @@ class SpeechAnalysisService: ObservableObject {
         sentimentAnalyzer.setLanguage(.english, range: Range<String.Index>(uncheckedBounds: (lower: "".startIndex, upper: "".startIndex)))
         emotionAnalyzer.setLanguage(.english, range: Range<String.Index>(uncheckedBounds: (lower: "".startIndex, upper: "".startIndex)))
         
-        print("✅ SpeechAnalysisService initialized")
+     
     }
     
     // MARK: - Public Methods
     
     /// Analyzes emotion from audio file using speech-to-text and natural language processing
     func analyzeEmotionFromSpeech(audioURL: URL) async throws -> SpeechEmotionResult {
-        print("🎤 Starting speech-based emotion analysis for: \(audioURL.lastPathComponent)")
+        
         
         // Request speech recognition permission
         try await requestSpeechRecognitionPermission()
@@ -69,7 +69,6 @@ class SpeechAnalysisService: ObservableObject {
         // Analyze sentiment and emotion from text
         let emotionResult = try await analyzeTextEmotion(text: transcription.formattedString)
         
-        print("✅ Speech analysis completed. Emotion: \(emotionResult.primaryEmotion), Confidence: \(emotionResult.confidence)")
         
         return emotionResult
     }
@@ -77,7 +76,6 @@ class SpeechAnalysisService: ObservableObject {
     /// Analyzes emotion from live audio stream during recording
     /// NOTE: Temporarily disabled due to local speech recognition issues
     func startLiveSpeechAnalysis() async throws -> AsyncStream<SpeechEmotionResult> {
-        print("🎤 Live speech analysis temporarily disabled...")
         
         // TEMPORARY: Return empty stream to prevent local speech errors
         // This will be re-enabled once we resolve the local speech recognition issues
@@ -88,7 +86,6 @@ class SpeechAnalysisService: ObservableObject {
     
     /// Stops live speech analysis
     func stopLiveSpeechAnalysis() {
-        print("⏹️ Stopping live speech analysis...")
         
         // TEMPORARY: Safe cleanup since live recognition is disabled
         recognitionTask?.cancel()

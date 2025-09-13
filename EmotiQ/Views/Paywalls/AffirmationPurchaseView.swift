@@ -16,14 +16,18 @@ struct AffirmationPurchaseView: View {
 
     @Binding var shouldDismiss: Bool
     
+    // Navigation callback for post-purchase flow
+    let onPurchaseSuccess: (() -> Void)?
+    
     // Animation states
     @State private var animateHeader = false
     @State private var animateFeatures = false
     @State private var animatePlans = false
     @State private var showSparkles = false
     
-    init(shouldDismiss: Binding<Bool> = .constant(false)) {
+    init(shouldDismiss: Binding<Bool> = .constant(false), onPurchaseSuccess: (() -> Void)? = nil) {
         self._shouldDismiss = shouldDismiss
+        self.onPurchaseSuccess = onPurchaseSuccess
     }
     
     var body: some View {
@@ -34,7 +38,7 @@ struct AffirmationPurchaseView: View {
                 .ignoresSafeArea()
             
             // Additional premium overlay
-            premiumBackgroundOverlay
+            //premiumBackgroundOverlay
             
             // Floating sparkles animation
             if showSparkles {
@@ -84,8 +88,8 @@ struct AffirmationPurchaseView: View {
         }
         .alert("Welcome to Premium!", isPresented: $viewModel.showSuccessAlert) {
             Button("Start Exploring") {
-                shouldDismiss = true
-                dismiss()
+                // Don't dismiss immediately - let the onChange handler handle it
+                // This ensures subscription status is refreshed first
             }
         } message: {
             Text("You now have unlimited access to all premium features!")
@@ -99,6 +103,24 @@ struct AffirmationPurchaseView: View {
             if shouldReturn {
                 shouldDismiss = true
                 dismiss()
+            }
+        }
+        .onChange(of: viewModel.purchaseCompleted) { oldValue, newValue in
+            if newValue {
+                // Refresh subscription status immediately after successful purchase
+                Task {
+                    await viewModel.refreshSubscriptionStatus()
+                    // Small delay to ensure state is updated before dismissing
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                    
+                    // Navigate to purchased features or dismiss
+                    if let onPurchaseSuccess = onPurchaseSuccess {
+                        onPurchaseSuccess()
+                    } else {
+                        shouldDismiss = true
+                        dismiss()
+                    }
+                }
             }
         }
 
@@ -374,12 +396,12 @@ struct AffirmationPurchaseView: View {
     // MARK: - Footer Section
     private var footerSection: some View {
         VStack(spacing: 16) {
-//            Button("Restore Purchases") {
-//                viewModel.restorePurchases()
-//            }
-//            .font(.system(size: 16, weight: .medium))
-//            .foregroundColor(ThemeColors.secondaryText)
-//            .disabled(viewModel.isLoading)
+            Button("Restore Purchases") {
+                viewModel.restorePurchases()
+            }
+            .font(.system(size: 16, weight: .medium))
+            .foregroundColor(ThemeColors.secondaryText)
+            .disabled(viewModel.isLoading)
             
             HStack(spacing: 32) {
                 Button("Terms of Use") {
@@ -391,7 +413,7 @@ struct AffirmationPurchaseView: View {
                 }
             }
             .font(.system(size: 14))
-            .foregroundColor(ThemeColors.tertiaryText)
+            .foregroundColor(ThemeColors.primaryText)
         }
     }
     
@@ -602,15 +624,15 @@ struct RevenueCatPackageCard: View {
         if productId == "affirmation_pack_10" {
             return [
                 "10 category generations",
-                "10 Customized affirmations",
-                "Priority voice generation"
+                "10 Customized affirmations"
+               // "Priority voice generation"
             ]
         } else if productId == "affirmation_lifetime" {
             return [
                 "Lifetime access",
                 "Unlimited category generations",
-                "Unlimited Customized affirmations",
-                "Priority voice generation"
+                "Unlimited Customized affirmations"
+                //"Priority voice generation"
             ]
         }
         
@@ -834,6 +856,16 @@ struct AffirmationPurchaseView_Previews: PreviewProvider {
     }
 }
 
+#Preview("With Navigation Callback") {
+    AffirmationPurchaseView(
+        shouldDismiss: .constant(false),
+        onPurchaseSuccess: {
+         
+        }
+    )
+    .environmentObject(ThemeManager())
+}
+
 
 
 // MARK: - Affirmation Plan Model
@@ -900,6 +932,7 @@ class AffirmationPurchaseViewModel: ObservableObject {
     @Published var showError = false
     @Published var errorMessage = ""
     @Published var shouldReturnToAffirmations = false
+    @Published var purchaseCompleted = false
     let retryManager = PurchaseRetryManager()
     @Published var availablePackages: [RevenueCat.Package] = []
     @Published var selectedPackage: RevenueCat.Package?
@@ -913,13 +946,7 @@ class AffirmationPurchaseViewModel: ObservableObject {
         self.revenueCatService = revenueCatService
         self.subscriptionService = subscriptionService
         
-        #if DEBUG
-        // Add mock data for preview/testing
-        if Config.isDebugMode {
-            print("🔍 DEBUG: Adding mock packages for testing")
-            // This will be replaced when real packages load
-        }
-        #endif
+
         
         loadOfferings()
     }
@@ -933,9 +960,6 @@ class AffirmationPurchaseViewModel: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isLoading = false
                     if case .failure(let error) = completion {
-                        if Config.isDebugMode {
-                            print("❌ Failed to load offerings: \(error)")
-                        }
                         self?.showError = true
                         self?.errorMessage = "Failed to load products. Please try again."
                     }
@@ -950,15 +974,6 @@ class AffirmationPurchaseViewModel: ObservableObject {
                     // Auto-select first package if available
                     if let firstPackage = affirmationPackages.first {
                         self?.selectedPackage = firstPackage
-                    }
-                    
-                    if Config.isDebugMode {
-                        print("✅ Loaded \(offerings.all.count) offerings")
-                        print("🎯 Found \(affirmationPackages.count) affirmation packages")
-                        
-                        for package in affirmationPackages {
-                            print("   - \(package.identifier): \(package.storeProduct.productIdentifier) (\(package.storeProduct.localizedPriceString))")
-                        }
                     }
                     
                     // Validate products
@@ -997,10 +1012,6 @@ class AffirmationPurchaseViewModel: ObservableObject {
         isLoading = true
         retryManager.reset()
         
-        if Config.isDebugMode {
-            print("🛒 Attempting to purchase: \(package.storeProduct.localizedTitle) (\(package.storeProduct.localizedPriceString))")
-        }
-        
         revenueCatService.purchaseProduct(package.storeProduct.productIdentifier)
             .sink(
                 receiveCompletion: { [weak self] completion in
@@ -1017,15 +1028,8 @@ class AffirmationPurchaseViewModel: ObservableObject {
                     if success {
                         self?.showSuccessAlert = true
                         self?.shouldReturnToAffirmations = true
+                        self?.purchaseCompleted = true
                         
-                        // Refresh subscription status immediately after successful purchase
-                        Task {
-                            await self?.refreshSubscriptionStatus()
-                        }
-                        
-                        if Config.isDebugMode {
-                            print("✅ Purchase successful for \(package.storeProduct.localizedTitle)")
-                        }
                     }
                 }
             )
@@ -1050,20 +1054,22 @@ class AffirmationPurchaseViewModel: ObservableObject {
                     }
                 },
                 receiveValue: { [weak self] customerInfo in
-                    if !customerInfo.activeSubscriptions.isEmpty {
+                    // Check for subscriptions and entitlements (non-consumables)
+                    let hasActiveSubscriptions = !customerInfo.activeSubscriptions.isEmpty
+                    let hasLifetimeAccess = customerInfo.entitlements.all["unlimited_affirmations"]?.isActive == true
+                    
+                    // Check for consumable purchases (10-pack)
+                    let hasPackPurchase = customerInfo.nonSubscriptions.contains { transaction in
+                        transaction.productIdentifier == "affirmation_pack_10"
+                    }
+                    
+                    if hasActiveSubscriptions || hasLifetimeAccess || hasPackPurchase {
                         self?.showSuccessAlert = true
+                        self?.purchaseCompleted = true
                         
-                        // Refresh subscription status immediately after successful restore
-                        Task {
-                            await self?.refreshSubscriptionStatus()
-                        }
-                        
-                        if Config.isDebugMode {
-                            print("✅ Purchases restored successfully")
-                        }
                     } else {
                         self?.showError = true
-                        self?.errorMessage = "No active purchases found"
+                        self?.errorMessage = "No previous purchases found to restore."
                     }
                 }
             )
@@ -1077,9 +1083,6 @@ class AffirmationPurchaseViewModel: ObservableObject {
             UIApplication.shared.open(url)
         }
         
-        if Config.isDebugMode {
-            print("📄 Opening terms of service")
-        }
     }
     
     func openPrivacyPolicy() {
@@ -1087,125 +1090,21 @@ class AffirmationPurchaseViewModel: ObservableObject {
         if let url = URL(string: "https://ytemiloluwa.github.io/privacy-policy.html") {
             UIApplication.shared.open(url)
         }
-        if Config.isDebugMode {
-            print("🔒 Opening privacy policy")
-        }
+
     }
     
     // MARK: - Helper Functions
-    private func refreshSubscriptionStatus() async {
+    func refreshSubscriptionStatus() async {
         // Force refresh subscription status to immediately unlock features
         if let subscriptionService = subscriptionService as? SubscriptionService {
             await subscriptionService.refreshSubscriptionStatus()
+            
+            // Also refresh the main subscription service if it's different
+            await SubscriptionService.shared.refreshSubscriptionStatus()
+            
+            // Refresh SecurePurchaseManager to detect consumable purchases
+            await SecurePurchaseManager.shared.validateWithRevenueCat()
+            
         }
     }
 }
-
-//// MARK: - Previews
-//#Preview("Affirmation Purchase View - Default") {
-//    AffirmationPurchaseView()
-//        .environmentObject(ThemeManager())
-//}
-//
-//#Preview("Affirmation Purchase View - Loading") {
-//    let viewModel = AffirmationPurchaseViewModel()
-//    viewModel.isLoading = true
-//
-//    return AffirmationPurchaseView()
-//        .environmentObject(ThemeManager())
-//        .onAppear {
-//            // Simulate loading state
-//            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-//                viewModel.isLoading = false
-//            }
-//        }
-//}
-//
-//#Preview("Affirmation Purchase View - Error") {
-//    let viewModel = AffirmationPurchaseViewModel()
-//    viewModel.showError = true
-//    viewModel.errorMessage = "Payment was declined. Please check your payment method."
-//    viewModel.retryManager.canRetry = true
-//    viewModel.retryManager.retryMessage = "Retry 1/3: Check your internet connection and try again."
-//
-//    return AffirmationPurchaseView()
-//        .environmentObject(ThemeManager())
-//}
-//
-//#Preview("Affirmation Purchase View - Success") {
-//    let viewModel = AffirmationPurchaseViewModel()
-//    viewModel.showSuccessAlert = true
-//
-//    return AffirmationPurchaseView()
-//        .environmentObject(ThemeManager())
-//}
-//
-//#Preview("Affirmation Plan View - Pack Selected") {
-//    AffirmationPlanView(
-//        plan: .pack,
-//        isSelected: true,
-//        isPopular: false
-//    ) {
-//        print("Pack selected")
-//    }
-//    .padding()
-//}
-//
-//#Preview("Affirmation Plan View - Lifetime Popular") {
-//    AffirmationPlanView(
-//        plan: .lifetime,
-//        isSelected: false,
-//        isPopular: true
-//    ) {
-//        print("Lifetime selected")
-//    }
-//    .padding()
-//}
-//
-//#Preview("Feature Row View") {
-//    VStack(spacing: 16) {
-//        FeatureRowView(
-//            icon: "brain.head.profile",
-//            title: "AI-Powered Personalization",
-//            description: "Affirmations tailored to your emotional profile"
-//        )
-//
-//        FeatureRowView(
-//            icon: "waveform",
-//            title: "Your Voice Speaking",
-//            description: "Hear affirmations in your cloned voice"
-//        )
-//
-//        FeatureRowView(
-//            icon: "heart.text.square",
-//            title: "15+ Categories",
-//            description: "Confidence, gratitude, courage, and more"
-//        )
-//    }
-//    .padding()
-//}
-//
-//#Preview("All Plans Comparison") {
-//    VStack(spacing: 16) {
-//        Text("Affirmation Plans")
-//            .font(.title2)
-//            .fontWeight(.bold)
-//
-//        AffirmationPlanView(
-//            plan: .pack,
-//            isSelected: false,
-//            isPopular: false
-//        ) {
-//            print("Pack selected")
-//        }
-//
-//        AffirmationPlanView(
-//            plan: .lifetime,
-//            isSelected: true,
-//            isPopular: true
-//        ) {
-//            print("Lifetime selected")
-//        }
-//    }
-//    .padding()
-//}

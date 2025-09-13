@@ -170,18 +170,13 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
     private func createRealVoiceFeatures(from result: EmotionAnalysisResult) -> VoiceFeatures? {
         // PRODUCTION: Extract real voice features from actual audio analysis
         guard let audioFeatures = result.audioFeatures else {
-            print("⚠️ No audio features available for voice feature creation")
+
             return nil
         }
         
         // Enhanced conversion: Use the new fromProductionFeatures method for complete data preservation
         let voiceFeatures = VoiceFeatures.fromProductionFeatures(audioFeatures)
         
-        // Log the enhanced conversion for debugging
-        print("🎯 Enhanced voice features created from production features:")
-        print("   - Core features preserved: pitch=\(voiceFeatures.pitch), energy=\(voiceFeatures.energy)")
-        print("   - Enhanced features: \(voiceFeatures.featureSummary)")
-        print("   - Data completeness: \(voiceFeatures.hasEnhancedFeatures ? "Enhanced" : "Basic") (\(voiceFeatures.featureCount) features)")
         
         return voiceFeatures
     }
@@ -191,7 +186,7 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
     /// Starts real-time speech analysis during recording
     /// NOTE: Temporarily disabled due to local speech recognition issues
     func startRealTimeSpeechAnalysis() async throws -> AsyncStream<EmotionalData> {
-        print("🎤 Real-time speech analysis temporarily disabled...")
+    
         
         // TEMPORARY: Return empty stream since live speech recognition is disabled
         // This will be re-enabled once we resolve the local speech recognition issues
@@ -202,7 +197,7 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
     
     /// Stops real-time speech analysis
     func stopRealTimeSpeechAnalysis() {
-        print("⏹️ Stopping real-time analysis...")
+  
         realTimeAnalysisTask?.cancel()
         realTimeAnalysisTask = nil
         

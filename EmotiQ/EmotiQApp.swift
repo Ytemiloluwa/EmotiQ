@@ -48,35 +48,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
 
-        // Configure RevenueCat debug logging
-        #if DEBUG
-        Purchases.logLevel = .debug
-        print("🔍 DEBUG: RevenueCat debug logging enabled")
-        #endif
-        
-        // Configure RevenueCat with your API key for all purchases (subscriptions + one-time purchases)
-        print("🔍 DEBUG: Configuring RevenueCat...")
-        RevenueCatService.shared.configure()
-        print("🔍 DEBUG: RevenueCat configuration completed")
 
-        // Optional: Verbose logging for debugging (remove in production)
-        //OneSignal.Debug.setLogLevel(.LL_VERBOSE)
+        RevenueCatService.shared.configure()
+
 
         // Use centralized OneSignal configuration
         OneSignal.initialize(Config.oneSignalAppID, withLaunchOptions: launchOptions)
-        print("OneSignal initialized: \(OneSignalNotificationManager.shared.isInitialized)")
-        
-        // Test notification permissions
-        print("🔍 DEBUG: Requesting notification permission from OneSignalService...")
+
         OneSignalService.shared.requestNotificationPermission()
-        print("🔍 DEBUG: OneSignalService permission status: \(OneSignalNotificationManager.shared.notificationPermissionGranted)")
 
 
-        // Request permission for push notifications
-        print("🔍 DEBUG: Requesting permission via OneSignal.Notifications.requestPermission...")
         OneSignal.Notifications.requestPermission({ accepted in
-            print("🔍 DEBUG: OneSignal permission callback - User accepted notifications: \(accepted)")
-            print("🔍 DEBUG: Current notification settings status: \(OneSignal.Notifications.permission)")
+
         }, fallbackToSettings: false)
         
         // Clean up duplicate emotional data on app launch

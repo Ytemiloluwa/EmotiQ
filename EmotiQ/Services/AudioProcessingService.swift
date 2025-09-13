@@ -62,7 +62,7 @@ class AudioProcessingService: NSObject, ObservableObject {
     
     /// Starts recording audio with real-time level monitoring
     func startRecording() async throws -> URL {
-        print("🎤 Starting audio recording...")
+        
         
         // Request microphone permission
         let hasPermission = await requestMicrophonePermission()
@@ -87,13 +87,13 @@ class AudioProcessingService: NSObject, ObservableObject {
         startRecordingTimer()
         startAudioLevelTimer()
         
-        print("✅ Recording started successfully")
+
         return recordingURL!
     }
     
     /// Stops recording and returns the recorded audio URL
     func stopRecording() async throws -> URL {
-        print("⏹️ Stopping audio recording...")
+        
         
         guard isRecording else {
             throw AudioProcessingError.recordingFailed
@@ -118,13 +118,13 @@ class AudioProcessingService: NSObject, ObservableObject {
             throw AudioProcessingError.recordingFailed
         }
         
-        print("✅ Recording stopped successfully: \(url.lastPathComponent)")
+    
         return url
     }
     
     /// Cancels current recording
     func cancelRecording() {
-        print("❌ Cancelling audio recording...")
+
         
         audioRecorder?.stop()
         stopTimers()
@@ -150,15 +150,15 @@ class AudioProcessingService: NSObject, ObservableObject {
     
     /// Extracts production-ready audio features from recorded data
     func extractFeatures(from audioURL: URL) async throws -> ProductionAudioFeatures {
-        print("🔬 Extracting audio features from: \(audioURL.lastPathComponent)")
+ 
         
         // Load audio samples
         let audioSamples = try await loadAudioSamples(from: audioURL)
-        print("📊 Loaded \(audioSamples.count) audio samples")
+     
         
         // Extract features using production algorithms
         let features = try extractProductionFeatures(from: audioSamples)
-        print("✅ Extracted features: pitch=\(features.pitch), energy=\(features.energy)")
+        
         
         return features
     }
@@ -169,9 +169,9 @@ class AudioProcessingService: NSObject, ObservableObject {
         Task {
             do {
                 try await AudioSessionManager.shared.configureAudioSession(for: .recording)
-                print("✅ Audio session configured successfully")
+         
             } catch {
-                print("❌ Failed to setup audio session: \(error)")
+        
                 recordingError = .audioSessionFailed
             }
         }
@@ -179,12 +179,7 @@ class AudioProcessingService: NSObject, ObservableObject {
     
     private func cleanupAudioSession() {
         Task {
-            do {
-                try await AudioSessionManager.shared.deactivateAudioSession()
-                print("✅ Audio session deactivated successfully")
-            } catch {
-                print("❌ Failed to deactivate audio session: \(error)")
-            }
+            try await AudioSessionManager.shared.deactivateAudioSession()
         }
     }
     
@@ -236,7 +231,6 @@ class AudioProcessingService: NSObject, ObservableObject {
         audioRecorder?.isMeteringEnabled = true
         audioRecorder?.prepareToRecord()
         
-        print("🎙️ Recording setup complete: \(url.lastPathComponent)")
     }
     
 
@@ -434,7 +428,15 @@ class AudioProcessingService: NSObject, ObservableObject {
     
     private func calculateRMSEnergy(_ samples: [Float]) -> Float {
         let sumOfSquares = samples.reduce(0) { $0 + $1 * $1 }
-        return sqrt(sumOfSquares / Float(samples.count))
+        let rms = sqrt(sumOfSquares / Float(samples.count))
+        
+        // Convert to dB with noise floor protection
+        let db = 20 * log10(max(rms, 0.0001)) // -80dB noise floor
+        
+        // Normalize to 0.0-1.0 range: -60dB to 0dB maps to 0.0-1.0
+        let normalizedDB = max(0, min(1, (db + 60) / 60))
+        
+        return normalizedDB
     }
     
     private func calculateSpectralCentroid(_ samples: [Float], sampleRate: Double) -> Float {
@@ -850,12 +852,12 @@ extension AudioProcessingService: AVAudioRecorderDelegate {
         if !flag {
             recordingError = .recordingFailed
         }
-        print("🎤 Recording finished successfully: \(flag)")
+
     }
     
     func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         recordingError = .recordingFailed
-        print("❌ Recording encode error: \(error?.localizedDescription ?? "Unknown")")
+        
     }
 }
 

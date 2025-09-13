@@ -5,7 +5,6 @@
 //  Created by Temiloluwa on 06-09-2025.
 //
 
-import Foundation
 import SwiftUI
 import Charts
 
@@ -29,7 +28,7 @@ struct VoiceCharacteristicsSection: View {
                     PitchEnergyTrendsChart(data: viewModel.voiceCharacteristicsData)
                     
                     // Voice Stability Analysis
-                    VoiceStabilityChart(data: viewModel.voiceCharacteristicsData)
+                    //VoiceStabilityChart(data: viewModel.voiceCharacteristicsData)
                     
                     // Formant Analysis
                     //FormantAnalysisChart(data: viewModel.voiceCharacteristicsData)
@@ -167,11 +166,6 @@ struct PitchEnergyTrendsChart: View {
             let avgPitch = points.map { $0.pitch }.reduce(0, +) / Double(points.count)
             let avgEnergy = points.map { $0.energy }.reduce(0, +) / Double(points.count)
             
-            // Debug energy calculation details
-            print("🔍 DEBUG: Aggregating data for \(date): \(points.count) points, avgPitch=\(avgPitch), avgEnergy=\(avgEnergy)")
-            print("🔍 DEBUG: Raw energy values for \(date): \(points.map { $0.energy })")
-            print("🔍 DEBUG: Energy calculation: sum=\(points.map { $0.energy }.reduce(0, +)), count=\(points.count), avg=\(avgEnergy)")
-            
             return DateAggregatedData(
                 date: date,
                 pitch: avgPitch,
@@ -190,7 +184,6 @@ struct PitchEnergyTrendsChart: View {
                 if let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) {
                     if let existingData = realData.first(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
                         allDates.append(existingData)
-                        print("🔍 DEBUG: Using existing data for \(date): pitch=\(existingData.pitch), energy=\(existingData.energy)")
                     } else {
                         // Add empty data point for missing days
                         allDates.append(DateAggregatedData(
@@ -199,7 +192,6 @@ struct PitchEnergyTrendsChart: View {
                             energy: 0,
                             recordingCount: 0
                         ))
-                        print("🔍 DEBUG: Added empty data for \(date)")
                     }
                 }
             }
@@ -237,9 +229,10 @@ struct PitchEnergyTrendsChart: View {
                             }
                         }
                         .frame(width: 25)
+                        .padding(.bottom, 8) // Align with chart bottom
                         
                         VStack(spacing: 8) {
-                            // Chart area
+                            // Histogram chart area
                             GeometryReader { geometry in
                                 ZStack {
                                     // Grid lines
@@ -254,90 +247,41 @@ struct PitchEnergyTrendsChart: View {
                                     }
                                     .offset(y: -2)
                                     
-                                    // Chart lines
-                                    Path { path in
-                                        guard !aggregatedData.isEmpty else { return }
-                                        
-                                        let width = geometry.size.width
-                                        let height = geometry.size.height
-                                        let stepX = width / CGFloat(max(aggregatedData.count - 1, 1))
-                                        
-                                        // Pitch line (blue) - normalized to 0-0.9 scale (leaving 10% padding at top)
-                                        let pitchPoints = aggregatedData.enumerated().map { index, item in
-                                            let normalizedPitch = min(max(item.pitch / 500.0, 0.0), 0.9) // Clamp to 0-0.9 for padding
-                                            let yPosition = height - CGFloat(normalizedPitch) * height
-                                            return CGPoint(
-                                                x: CGFloat(index) * stepX,
-                                                y: yPosition
-                                            )
-                                        }
-                                        
-                                        path.move(to: pitchPoints[0])
-                                        for point in pitchPoints.dropFirst() {
-                                            path.addLine(to: point)
-                                        }
-                                    }
-                                    .stroke(Color.blue, lineWidth: 2)
-                                    
-                                    // Energy line (green)
-                                    Path { path in
-                                        guard !aggregatedData.isEmpty else { return }
-                                        
-                                        let width = geometry.size.width
-                                        let height = geometry.size.height
-                                        let stepX = width / CGFloat(max(aggregatedData.count - 1, 1))
-                                        
-                                        let energyPoints = aggregatedData.enumerated().map { index, item in
-                                            // Normalize energy to 0-0.9 scale (energy values are typically 0.001-0.1)
-                                            let normalizedEnergy = min(item.energy * 50.0, 0.9) // Scale up small energy values, max 0.9 for padding
-                                            let yPosition = height - CGFloat(normalizedEnergy) * height
+                                    // Histogram bars
+                                    HStack(alignment: .bottom, spacing: 4) {
+                                        ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
+                                            let width = geometry.size.width
+                                            let height = geometry.size.height
+                                            let barWidth = (width - CGFloat(aggregatedData.count - 1) * 4) / CGFloat(aggregatedData.count)
                                             
-                                            // Debug energy normalization
-                                            print("🔍 DEBUG: Energy normalization for day \(index + 1): raw=\(item.energy), scaled=\(item.energy * 50.0), normalized=\(normalizedEnergy), yPosition=\(yPosition)")
-                                            
-                                            return CGPoint(
-                                                x: CGFloat(index) * stepX,
-                                                y: yPosition
-                                            )
-                                        }
-                                        
-                                        path.move(to: energyPoints[0])
-                                        for point in energyPoints.dropFirst() {
-                                            path.addLine(to: point)
+                                            HStack(alignment: .bottom, spacing: 2) {
+                                                // Pitch bar (blue)
+                                                let pitchHeight = max(CGFloat(min(max(item.pitch / 500.0, 0.0), 1.0)) * height, 2)
+                                                RoundedRectangle(cornerRadius: 2)
+                                                    .fill(Color.blue.opacity(0.7))
+                                                    .frame(
+                                                        width: barWidth * 0.45,
+                                                        height: pitchHeight
+                                                    )
+                                                
+                                                // Energy bar (green)
+                                                RoundedRectangle(cornerRadius: 2)
+                                                    .fill(Color.green.opacity(0.7))
+                                                    .frame(
+                                                        width: barWidth * 0.45,
+                                                        height: max(CGFloat(min(max(item.energy * 50.0, 0.0), 1.0)) * height, 2)
+                                                    )
+                                            }
                                         }
                                     }
-                                    .stroke(Color.green, lineWidth: 2)
-                                    
-                                    // Data points
-                                    ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
-                                        let width = geometry.size.width
-                                        let height = geometry.size.height
-                                        let stepX = width / CGFloat(max(aggregatedData.count - 1, 1))
-                                        
-                                        // Pitch points (blue circles)
-                                        Circle()
-                                            .fill(Color.blue)
-                                            .frame(width: 6, height: 6)
-                                            .position(
-                                                x: CGFloat(index) * stepX,
-                                                y: height - (CGFloat(min(max(item.pitch / 500.0, 0.0), 0.9))) * height
-                                            )
-                                        
-                                        // Energy points (green squares)
-                                        Rectangle()
-                                            .fill(Color.green)
-                                            .frame(width: 6, height: 6)
-                                            .position(
-                                                x: CGFloat(index) * stepX,
-                                                y: height - (CGFloat(min(max(item.energy * 50.0, 0.0), 0.9))) * height
-                                            )
-                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                                    .padding(.bottom, 8) // Add bottom padding to align with Y-axis origin
                                 }
                             }
                             .frame(height: 150)
-                            .padding(.top, 8) // Add top padding for breathing room
-                            .padding(.bottom, 8) // Add bottom padding for breathing room
-                            .clipped() // Ensure chart content stays within bounds
+                            .padding(.top, 8)
+                            .padding(.bottom, 0) // Remove bottom padding to align with Y-axis origin
+                            .clipped()
                             
                             // X-axis labels (dates) - positioned at bottom
                             HStack {
@@ -358,8 +302,8 @@ struct PitchEnergyTrendsChart: View {
                     // Legend
                     HStack(spacing: 20) {
                         HStack(spacing: 6) {
-                            Circle()
-                                .fill(.blue)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.blue.opacity(0.7))
                                 .frame(width: 8, height: 8)
                             Text("Pitch (normalized)")
                                 .font(.caption)
@@ -367,8 +311,8 @@ struct PitchEnergyTrendsChart: View {
                         }
                         
                         HStack(spacing: 6) {
-                            Rectangle()
-                                .fill(.green)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.green.opacity(0.7))
                                 .frame(width: 8, height: 8)
                             Text("Energy Level")
                                 .font(.caption)

@@ -160,7 +160,6 @@ class InsightsViewModel: ObservableObject {
         do {
             return try persistenceController.container.viewContext.fetch(request)
         } catch {
-            print("❌ Failed to fetch emotional data: \(error)")
             return []
         }
     }
@@ -284,7 +283,6 @@ class InsightsViewModel: ObservableObject {
     }
     
     private func generateTrendData(from emotionalData: [EmotionalDataEntity]) -> [EmotionTrendData] {
-        print("🔍 DEBUG: generateTrendData() started with \(emotionalData.count) records")
         
         let calendar = Calendar.current
         let today = Date()
@@ -292,7 +290,7 @@ class InsightsViewModel: ObservableObject {
         // Find the first recording date
         guard let firstRecording = emotionalData.min(by: { ($0.timestamp ?? Date()) < ($1.timestamp ?? Date()) }),
               let firstDate = firstRecording.timestamp else {
-            print("🔍 DEBUG: No first recording found, showing empty chart")
+            
             // No data, show empty chart
             let daysToShow = selectedPeriod == .week ? 7 : 14 // Reduced from 30 to 14
             return (0..<daysToShow).map { dayOffset in
@@ -303,7 +301,7 @@ class InsightsViewModel: ObservableObject {
             }.reversed()
         }
         
-        print("🔍 DEBUG: First recording date: \(firstDate)")
+     
         
         // Start from the first recording date
         let startDate = calendar.startOfDay(for: firstDate)
@@ -311,17 +309,16 @@ class InsightsViewModel: ObservableObject {
         let maxDays = selectedPeriod == .week ? 7 : 14 // Reduced from 30 to 14
         let daysToShow = min(max(daysSinceFirst + 1, maxDays), maxDays)
         
-        print("🔍 DEBUG: Days since first: \(daysSinceFirst), Days to show: \(daysToShow)")
         
         // Limit to prevent memory issues
         let safeDaysToShow = min(daysToShow, 14)
-        print("🔍 DEBUG: Safe days to show: \(safeDaysToShow)")
+    
         
         return (0..<safeDaysToShow).map { dayOffset in
-            print("🔍 DEBUG: Processing day \(dayOffset + 1)/\(safeDaysToShow)")
+        
             
             guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else {
-                print("❌ DEBUG: Failed to calculate date for day \(dayOffset)")
+                
                 return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
             }
             
@@ -333,7 +330,7 @@ class InsightsViewModel: ObservableObject {
                 return timestamp >= dayStart && timestamp < dayEnd
             }
             
-            print("🔍 DEBUG: Day \(dayOffset + 1): Found \(dayData.count) recordings")
+           
             
             // Calculate emotion counts for the chart
             let emotions = dayData.compactMap { entity -> EmotionCategory? in
@@ -350,7 +347,6 @@ class InsightsViewModel: ObservableObject {
             let primaryCount = sortedEmotions.first?.value ?? 0
             let secondaryCount = sortedEmotions.count > 1 ? sortedEmotions[1].value : 0
             
-            print("🔍 DEBUG: Day \(dayOffset + 1): Primary=\(primaryCount), Secondary=\(secondaryCount)")
             
             return EmotionTrendData(
                 date: date,
@@ -681,14 +677,13 @@ extension EmotionIntensity {
 extension InsightsViewModel {
 
     private func generateVoiceCharacteristicsData(from emotionalData: [EmotionalDataEntity]) -> [VoiceCharacteristicsDataPoint] {
-        print("🔍 DEBUG: generateVoiceCharacteristicsData() started with \(emotionalData.count) emotional data entities")
         
         let voiceData: [VoiceCharacteristicsDataPoint] = emotionalData.compactMap { (entity: EmotionalDataEntity) -> VoiceCharacteristicsDataPoint? in
             guard let timestamp = entity.timestamp,
                   let emotionString = entity.primaryEmotion,
                   let emotion = EmotionCategory(rawValue: emotionString),
                   let voiceFeaturesData = entity.voiceFeaturesData else {
-                print("🔍 DEBUG: Entity missing required data: timestamp=\(entity.timestamp != nil), emotion=\(entity.primaryEmotion != nil), voiceFeaturesData=\(entity.voiceFeaturesData != nil)")
+               
                 return nil
             }
             
@@ -697,7 +692,6 @@ extension InsightsViewModel {
                 let decoder = JSONDecoder()
                 let voiceFeatures = try decoder.decode(VoiceFeatures.self, from: voiceFeaturesData)
                 
-                print("🔍 DEBUG: Decoded voice features for \(timestamp): pitch=\(voiceFeatures.pitch), energy=\(voiceFeatures.energy), spectralCentroid=\(voiceFeatures.spectralCentroid)")
                 
                 return VoiceCharacteristicsDataPoint(
                     timestamp: timestamp,
@@ -715,20 +709,18 @@ extension InsightsViewModel {
                     confidence: entity.confidence
                 )
             } catch {
-                print("❌ Failed to decode voice features: \(error)")
-                print("🔍 DEBUG: Raw voiceFeaturesData: \(String(data: voiceFeaturesData, encoding: .utf8) ?? "nil")")
+              
                 return nil
             }
         }.sorted { (first: VoiceCharacteristicsDataPoint, second: VoiceCharacteristicsDataPoint) -> Bool in
             return first.timestamp < second.timestamp
         }
         
-        print("🔍 DEBUG: Successfully generated \(voiceData.count) voice characteristics data points")
         
         // Debug first few data points
         let firstThree = Array(voiceData.prefix(3))
         for (index, data) in firstThree.enumerated() {
-            print("🔍 DEBUG: Voice data \(index + 1): timestamp=\(data.timestamp), pitch=\(data.pitch), energy=\(data.energy)")
+           
         }
         
         // Debug energy value analysis
@@ -738,10 +730,8 @@ extension InsightsViewModel {
             let maxEnergy = energyValues.max() ?? 0.0
             let avgEnergy = energyValues.reduce(0.0, +) / Double(energyValues.count)
             
-            print("🔍 DEBUG: Energy Analysis - Min: \(minEnergy), Max: \(maxEnergy), Avg: \(avgEnergy)")
-            print("🔍 DEBUG: Energy value distribution:")
             for (index, energy) in energyValues.enumerated() {
-                print("  Data point \(index + 1): \(energy)")
+                
             }
         }
         

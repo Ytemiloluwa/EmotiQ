@@ -32,18 +32,13 @@ class RevenueCatService: RevenueCatServiceProtocol {
     
     func configure() {
         guard !Config.revenueCatAPIKey.isEmpty && !Config.revenueCatAPIKey.contains("YOUR_") else {
-            if Config.isDebugMode {
-                print("⚠️ RevenueCat API key not configured - using mock mode")
-            }
+
             return
         }
         
-        if Config.isDebugMode {
-            print("🔍 RevenueCat: Starting configuration...")
-        }
         
         // Configure RevenueCat with your API key
-        Purchases.logLevel = Config.isDebugMode ? .debug : .error
+        //Purchases.logLevel = Config.isDebugMode ? .debug : .error
         Purchases.configure(withAPIKey: Config.revenueCatAPIKey)
         
         // Set user attributes for analytics
@@ -57,22 +52,13 @@ class RevenueCatService: RevenueCatServiceProtocol {
             DispatchQueue.main.async {
                 if error == nil {
                     self?.isConfigured = true
-                    if Config.isDebugMode {
-                        print("✅ RevenueCat configured successfully and ready")
-                    }
                     // Notify listeners that configuration is complete
                     self?.onConfigurationComplete?()
                 } else {
-                    if Config.isDebugMode {
-                        print("❌ RevenueCat configuration failed: \(error?.localizedDescription ?? "Unknown error")")
-                    }
                 }
             }
         }
         
-        if Config.isDebugMode {
-            print("🔍 RevenueCat: Configuration call completed, waiting for readiness...")
-        }
     }
     
     func getCustomerInfo() -> AnyPublisher<RevenueCat.CustomerInfo, Error> {
@@ -139,9 +125,6 @@ class RevenueCatService: RevenueCatServiceProtocol {
                     } else if transaction != nil {
                         promise(.success(true))
                         
-                        if Config.isDebugMode {
-                            print("✅ Purchase successful: \(productIdentifier)")
-                        }
                     } else {
                         promise(.failure(RevenueCatError.purchaseFailed))
                     }
@@ -164,9 +147,6 @@ class RevenueCatService: RevenueCatServiceProtocol {
                     // Return RevenueCat's actual CustomerInfo directly
                     promise(.success(customerInfo))
                     
-                    if Config.isDebugMode {
-                        print("✅ Purchases restored successfully")
-                    }
                 } else {
                     promise(.failure(RevenueCatError.restoreFailed))
                 }
@@ -183,32 +163,21 @@ class RevenueCatService: RevenueCatServiceProtocol {
         
         // If still not configured after trying, return error
         guard isConfigured else {
-            if Config.isDebugMode {
-                print("⚠️ RevenueCat not configured, returning error")
-            }
+
             return Fail(error: RevenueCatError.configurationFailed).eraseToAnyPublisher()
         }
         
-        if Config.isDebugMode {
-            print("📦 RevenueCat configured, fetching real offerings")
-        }
         
         return Future { promise in
             Purchases.shared.getOfferings { offerings, error in
                 if let error = error {
-                    if Config.isDebugMode {
-                        print("❌ RevenueCat getOfferings error: \(error)")
-                    }
+
                     promise(.failure(error))
                 } else if let offerings = offerings {
-                    if Config.isDebugMode {
-                        print("✅ RevenueCat offerings loaded successfully")
-                    }
+
                     promise(.success(offerings))
                 } else {
-                    if Config.isDebugMode {
-                        print("❌ RevenueCat offerings is nil")
-                    }
+
                     promise(.failure(RevenueCatError.offeringsFailed))
                 }
             }
@@ -224,32 +193,21 @@ class RevenueCatService: RevenueCatServiceProtocol {
         
         // If still not configured after trying, return error
         guard isConfigured else {
-            if Config.isDebugMode {
-                print("⚠️ RevenueCat not configured, returning error")
-            }
+
             throw RevenueCatError.configurationFailed
         }
         
-        if Config.isDebugMode {
-            print("📦 RevenueCat configured, fetching real offerings")
-        }
         
         return try await withCheckedThrowingContinuation { continuation in
             Purchases.shared.getOfferings { offerings, error in
                 if let error = error {
-                    if Config.isDebugMode {
-                        print("❌ RevenueCat getOfferings error: \(error)")
-                    }
+
                     continuation.resume(throwing: error)
                 } else if let offerings = offerings {
-                    if Config.isDebugMode {
-                        print("✅ RevenueCat offerings loaded successfully")
-                    }
+
                     continuation.resume(returning: offerings)
                 } else {
-                    if Config.isDebugMode {
-                        print("❌ RevenueCat offerings is nil")
-                    }
+
                     continuation.resume(throwing: RevenueCatError.offeringsFailed)
                 }
             }

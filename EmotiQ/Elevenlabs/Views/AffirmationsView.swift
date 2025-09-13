@@ -79,29 +79,6 @@ struct AffirmationsView: View {
             .sheet(isPresented: $purchaseManager.showingPurchaseView) {
                 AffirmationPurchaseView(shouldDismiss: $purchaseManager.showingPurchaseView)
             }
-            //            .sheet(isPresented: $showingEffectivenessRating) {
-            //                if let affirmation = affirmationToComplete {
-            //                    SimpleEffectivenessRatingView(
-            //                        affirmation: affirmation,
-            //                        onComplete: {
-            //                            Task {
-            //                                await affirmationEngine.completeAffirmation(affirmation, effectiveness: 3)
-            //                                showingEffectivenessRating = false
-            //                                affirmationToComplete = nil
-            //                            }
-            //                        }
-            //                    )
-            //                } else {
-            //                    // Debug fallback if affirmation is nil
-            //                    VStack {
-            //                        Text("Debug: No affirmation to complete")
-            //                            .foregroundColor(.red)
-            //                        Button("Dismiss") {
-            //                            showingEffectivenessRating = false
-            //                        }
-            //                    }
-            //                }
-            //            }
             .navigationDestination(isPresented: $showingAffirmationDetail) {
                 if let affirmation = selectedAffirmation {
                     AffirmationDetailView(affirmation: affirmation)
@@ -160,14 +137,12 @@ struct AffirmationsView: View {
     // MARK: - Helper Methods
     
     private func loadUIState() async {
-        print("🔍 AffirmationsView: loadUIState called")
+    
         
         remainingGenerations = await securePurchaseManager.getRemainingUses(for: .affirmationsView)
         canGenerate = await securePurchaseManager.canGenerateAffirmations(from: .affirmationsView)
         needsPurchase = await securePurchaseManager.needsToPurchase(from: .affirmationsView)
         
-        print("🔍 AffirmationsView: UI State loaded - remaining: \(remainingGenerations), canGenerate: \(canGenerate), needsPurchase: \(needsPurchase)")
-        print("🔍 AffirmationsView: shouldShowBuyButton will be: \(needsPurchase)")
     }
     
     // MARK: - Header Section
@@ -300,10 +275,6 @@ struct AffirmationsView: View {
                                 HapticManager.shared.navigationTransition()
                                 
                             }
-                            // onComplete: { affirmation in
-                            //     affirmationToComplete = affirmation
-                            //     showingEffectivenessRating = true
-                            // }
                         )
                     }
                 }
@@ -524,7 +495,7 @@ struct AffirmationsView: View {
             await securePurchaseManager.incrementUsage(for: .affirmationsView)
             HapticManager.shared.notification(.success)
         } catch {
-            print("Failed to generate daily affirmations: \(error)")
+         
             HapticManager.shared.notification(.error)
         }
     }
@@ -540,7 +511,7 @@ struct AffirmationsView: View {
             // Increment usage securely
             await securePurchaseManager.incrementUsage(for: .affirmationsView)
         } catch {
-            print("Failed to generate affirmations for category \(category): \(error)")
+
             HapticManager.shared.notification(.error)
         }
     }
@@ -604,7 +575,7 @@ struct AffirmationsView: View {
                             }
                         } label: {
                             Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.title2)
+                                .font(.title)
                                 .foregroundColor(ThemeColors.accent)
                         }
                         .hapticFeedback(.primary)
@@ -619,57 +590,6 @@ struct AffirmationsView: View {
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
                     
-                    //                // Progress Indicator
-                    //                if affirmation.isCompleted {
-                    //                    HStack {
-                    //                        Image(systemName: "checkmark.circle.fill")
-                    //                            .foregroundColor(.green)
-                    //
-                    //                        Text("Completed")
-                    //                            .font(.caption)
-                    //                            .foregroundColor(.green)
-                    //
-                    //                        Spacer()
-                    //
-                    //                        if let effectiveness = affirmation.effectiveness {
-                    //                            HStack(spacing: 2) {
-                    //                                ForEach(1...5, id: \.self) { star in
-                    //                                    Image(systemName: star <= effectiveness ? "star.fill" : "star")
-                    //                                        .font(.caption2)
-                    //                                        .foregroundColor(.yellow)
-                    //                                }
-                    //                            }
-                    //                        }
-                    //                    }
-                    //                }
-                    
-                    //else {
-                    // Complete Button for incomplete affirmations
-                    // HStack {
-                    //     Spacer()
-                    //
-                    //     Button {
-                    //         onComplete(affirmation)
-                    //     } label: {
-                    //         HStack(spacing: 8) {
-                    //             Image(systemName: "checkmark.circle")
-                    //                 .font(.caption)
-                    //
-                    //             Text("Complete")
-                    //                 .font(.caption)
-                    //                 .fontWeight(.medium)
-                    //         }
-                    //         .foregroundColor(.white)
-                    //         .padding(.horizontal, 16)
-                    //         .padding(.vertical, 8)
-                    //         .background(
-                    //             Capsule()
-                    //                 .fill(ThemeColors.accent)
-                    //         )
-                    //     }
-                    //     .hapticFeedback(.primary)
-                    // }
-                    //}
                 }
                 .padding(16)
                 .background(
@@ -691,7 +611,7 @@ struct AffirmationsView: View {
                     emotion: affirmation.targetEmotion
                 )
             } catch {
-                print("Failed to play affirmation: \(error)")
+             
             }
         }
         
@@ -905,8 +825,9 @@ extension Animation {
             Group {
                 Text("Idle State:")
                 AffirmationPurchaseButton(purchaseManager: purchaseManager) {
-                    print("Purchase button tapped")
+                 
                 }
+                .environmentObject(SubscriptionService.shared)
                 
                 Text("Purchasing State:")
                 AffirmationPurchaseButton(
@@ -916,8 +837,9 @@ extension Animation {
                         return manager
                     }()
                 ) {
-                    print("Purchase button tapped")
+                
                 }
+                .environmentObject(SubscriptionService.shared)
                 
                 Text("Completed State:")
                 AffirmationPurchaseButton(
@@ -927,8 +849,9 @@ extension Animation {
                         return manager
                     }()
                 ) {
-                    print("Purchase button tapped")
+                  
                 }
+                .environmentObject(SubscriptionService.shared)
                 
                 Text("Failed State:")
                 AffirmationPurchaseButton(
@@ -938,12 +861,13 @@ extension Animation {
                         return manager
                     }()
                 ) {
-                    print("Purchase button tapped")
+                    
                 }
+                .environmentObject(SubscriptionService.shared)
             }
         }
         .padding()
+        .environmentObject(SubscriptionService.shared)
     }
 }
-
 

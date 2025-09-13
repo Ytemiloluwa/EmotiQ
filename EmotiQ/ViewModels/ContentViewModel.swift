@@ -58,7 +58,7 @@ class ContentViewModel: BaseViewModel {
             .sink { [weak self] _ in
                 // Refresh daily usage when reset is detected
                 self?.subscriptionService.refreshDailyUsage()
-                print("🔄 Daily usage reset detected in ContentViewModel")
+              
             }
             .store(in: &cancellables)
     }
@@ -83,9 +83,7 @@ class ContentViewModel: BaseViewModel {
                     }
                 },
                 receiveValue: { status in
-                    if Config.isDebugMode {
-                        print("📱 Subscription status loaded: \(status.displayName)")
-                    }
+
                 }
             )
             .store(in: &cancellables)
@@ -97,9 +95,6 @@ class ContentViewModel: BaseViewModel {
             return
         }
         
-        if Config.isDebugMode {
-            print("🎤 Starting voice analysis...")
-        }
         
         // Voice recording will be handled by VoiceRecordingView
         // This method is kept for compatibility but the actual navigation
@@ -107,9 +102,6 @@ class ContentViewModel: BaseViewModel {
     }
     
     func showInsights() {
-        if Config.isDebugMode {
-            print("📊 Showing emotional insights...")
-        }
         
         // TODO: Navigate to insights view
         // This will be implemented in the next phase
@@ -119,9 +111,6 @@ class ContentViewModel: BaseViewModel {
         errorMessage = error.localizedDescription
         showError = true
         
-        if Config.isDebugMode {
-            print("❌ ContentViewModel Error: \(error)")
-        }
     }
 }
 

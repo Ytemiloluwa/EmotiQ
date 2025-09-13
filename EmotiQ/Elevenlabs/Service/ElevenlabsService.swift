@@ -27,8 +27,7 @@ class ElevenLabsService: ObservableObject {
         case inactive
     }
     
-    private let apiKey: String
-    private let baseURL = "https://api.elevenlabs.io/v1"
+    private let baseURL = "https://emotiq-api-proxy-v2.vercel.app/api/elevenlabs"
     private let session = URLSession.shared
     private var cancellables = Set<AnyCancellable>()
     
@@ -41,17 +40,6 @@ class ElevenLabsService: ObservableObject {
     private let maxCacheSize: Int = 100 // Maximum cached audio files
     
     private init() {
-        self.apiKey = Config.elevenLabsAPIKey
-        
-        // Debug logging for API key loading
-        if Config.isDebugMode {
-            if apiKey.isEmpty {
-                print("⚠️ ElevenLabs API key is empty!")
-            } else {
-                print("✅ ElevenLabs API key loaded successfully (length: \(apiKey.count))")
-                print("🔑 API Key prefix: \(String(apiKey.prefix(8)))...")
-            }
-        }
         
         loadVoiceProfile()
     }
@@ -60,9 +48,6 @@ class ElevenLabsService: ObservableObject {
     
     /// Clone user's voice from audio sample
     func cloneVoice(from audioURL: URL, name: String = "EmotiQ User Voice") async throws -> VoiceProfile {
-        guard !apiKey.isEmpty else {
-            throw ElevenLabsError.missingAPIKey
-        }
         
         voiceCloneProgress = 0.1
         
@@ -83,11 +68,6 @@ class ElevenLabsService: ObservableObject {
             quality: .high
         )
         
-        // Log the voice profile creation with custom name
-        print("🎤 Voice profile created successfully!")
-        print("📝 Profile Name: \"\(name)\"")
-        print("🆔 Voice ID: \(voiceID)")
-        print("📅 Created: \(Date())")
         
         // Save profile
         userVoiceProfile = profile
@@ -140,16 +120,11 @@ class ElevenLabsService: ObservableObject {
     
     /// Upload audio file and create voice clone
     private func uploadVoiceClone(audioURL: URL, name: String) async throws -> String {
-        if Config.isDebugMode {
-            print("🎤 Starting voice upload to ElevenLabs...")
-            print("📝 Voice name: \"\(name)\"")
-            print("🔗 API endpoint: \(baseURL)/voices/add")
-        }
-        
-        let url = URL(string: "\(baseURL)/voices/add")!
+
+        let url = URL(string: "\(baseURL)?path=voices/add")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         
         // Create multipart form data
         let boundary = UUID().uuidString
@@ -171,19 +146,10 @@ class ElevenLabsService: ObservableObject {
         let fileExtension = audioURL.pathExtension.lowercased()
         let supportedFormats = ["m4a", "mp3", "wav", "flac", "aac"]
         guard supportedFormats.contains(fileExtension) else {
-            if Config.isDebugMode {
-                print("❌ Unsupported audio format: \(fileExtension)")
-                print("✅ Supported formats: \(supportedFormats.joined(separator: ", "))")
-            }
+
             throw ElevenLabsError.invalidAudioFormat
         }
         
-        if Config.isDebugMode {
-            print("📊 Audio data size: \(audioData.count) bytes")
-            print("🎵 Audio file path: \(audioURL.path)")
-            print("📁 File extension: \(fileExtension)")
-            print("✅ Audio file exists and is readable")
-        }
         
         let formData = createMultipartFormData(
             boundary: boundary,
@@ -191,10 +157,6 @@ class ElevenLabsService: ObservableObject {
             audioData: audioData,
             fileName: "voice_sample.m4a"
         )
-        
-        if Config.isDebugMode {
-            print("📦 Form data size: \(formData.count) bytes")
-        }
         
         request.httpBody = formData
         
@@ -204,18 +166,9 @@ class ElevenLabsService: ObservableObject {
             throw ElevenLabsError.networkError
         }
         
-        if Config.isDebugMode {
-            print("📡 HTTP Status Code: \(httpResponse.statusCode)")
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("📄 Response: \(responseString)")
-            }
-        }
         
         guard httpResponse.statusCode == 200 else {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            if Config.isDebugMode {
-                print("❌ ElevenLabs API Error (Status \(httpResponse.statusCode)): \(errorMessage)")
-            }
             
             // Try to parse ElevenLabs error response
             if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -229,25 +182,9 @@ class ElevenLabsService: ObservableObject {
         
         do {
             let voiceResponse = try JSONDecoder().decode(VoiceCloneResponse.self, from: data)
-            if Config.isDebugMode {
-                print("✅ Voice clone created successfully!")
-                print("🆔 Voice ID: \(voiceResponse.voice_id)")
-                print("🔒 Requires verification: \(voiceResponse.requires_verification ?? false)")
-                if let name = voiceResponse.name {
-                    print("📝 Voice name: \(name)")
-                }
-                if let status = voiceResponse.status {
-                    print("📊 Status: \(status)")
-                }
-            }
+
             return voiceResponse.voice_id
         } catch {
-            if Config.isDebugMode {
-                print("❌ JSON Decode Error: \(error)")
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("📄 Raw Response: \(responseString)")
-                }
-            }
             throw ElevenLabsError.apiError("Failed to decode response: \(error.localizedDescription)")
         }
     }
@@ -262,10 +199,6 @@ class ElevenLabsService: ObservableObject {
         stability: Double = 0.75
     ) async throws -> URL {
         guard let voiceProfile = userVoiceProfile else {
-            if Config.isDebugMode {
-                print("⚠️ No voice profile found. User needs to clone their voice first.")
-                print("💡 This is expected behavior for new users who haven't set up voice cloning yet.")
-            }
             throw ElevenLabsError.noVoiceProfile
         }
         
@@ -277,10 +210,10 @@ class ElevenLabsService: ObservableObject {
         isGeneratingAudio = true
         defer { isGeneratingAudio = false }
         
-        let url = URL(string: "\(baseURL)/text-to-speech/\(voiceProfile.id)")!
+        let url = URL(string: "\(baseURL)?path=text-to-speech/\(voiceProfile.id)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         // Create request body with emotion-aware settings
@@ -299,7 +232,7 @@ class ElevenLabsService: ObservableObject {
         
         // Log performance (should be < 3 seconds)
         if responseTime > 3.0 {
-            print("⚠️ ElevenLabs response time: \(responseTime)s (target: <3s)")
+      
         }
         
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -389,14 +322,9 @@ class ElevenLabsService: ObservableObject {
                     userVoiceProfile = profile
                     isVoiceCloned = profile.isActive
                     
-                    if Config.isDebugMode {
-                        print("✅ Voice profile loaded from Core Data: \(profile.name)")
-                    }
                 }
             } catch {
-                if Config.isDebugMode {
-                    print("❌ Failed to load voice profile from Core Data: \(error)")
-                }
+
             }
         }
     }
@@ -406,13 +334,9 @@ class ElevenLabsService: ObservableObject {
         Task {
             do {
                 try await saveVoiceProfileToCoreData(profile)
-                if Config.isDebugMode {
-                    print("✅ Voice profile saved to Core Data: \(profile.name)")
-                }
+
             } catch {
-                if Config.isDebugMode {
-                    print("❌ Failed to save voice profile to Core Data: \(error)")
-                }
+
             }
         }
     }
@@ -501,10 +425,10 @@ class ElevenLabsService: ObservableObject {
         guard let profile = userVoiceProfile else { return }
         
         // Delete from ElevenLabs
-        let url = URL(string: "\(baseURL)/voices/\(profile.id)")!
+        let url = URL(string: "\(baseURL)?path=voices/\(profile.id)")!
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         
         let (_, response) = try await session.data(for: request)
         
@@ -522,10 +446,6 @@ class ElevenLabsService: ObservableObject {
         
         // Clear audio cache
         await audioCache.clearCache()
-        
-        if Config.isDebugMode {
-            print("✅ Voice profile deleted from Core Data and ElevenLabs")
-        }
         
         HapticManager.shared.notification(.success)
     }
@@ -556,7 +476,7 @@ class ElevenLabsService: ObservableObject {
     
     /// Safely check if voice features are available
     func canUseVoiceFeatures() -> Bool {
-        return hasVoiceProfile && !apiKey.isEmpty
+        return hasVoiceProfile // API key is handled by the secure proxy
     }
     
     /// Get user-friendly message about voice profile status
@@ -577,22 +497,13 @@ class ElevenLabsService: ObservableObject {
             if let profile = try await fetchVoiceProfileFromCoreData() {
                 userVoiceProfile = profile
                 isVoiceCloned = profile.isActive
-                
-                if Config.isDebugMode {
-                    print("🔄 Voice profile status refreshed from Core Data: \(profile.name)")
-                }
+
             } else {
                 userVoiceProfile = nil
                 isVoiceCloned = false
-                
-                if Config.isDebugMode {
-                    print("🔄 No voice profile found in Core Data")
-                }
             }
         } catch {
-            if Config.isDebugMode {
-                print("❌ Failed to refresh voice profile status: \(error)")
-            }
+
         }
     }
     
@@ -626,23 +537,13 @@ class ElevenLabsService: ObservableObject {
         // Close boundary
         formData.append("--\(boundary)--\r\n".data(using: .utf8)!)
         
-        if Config.isDebugMode {
-            print("🔧 Multipart form data created:")
-            print("   - Boundary: \(boundary)")
-            print("   - Name: \(name)")
-            print("   - File name: \(fileName)")
-            print("   - Audio data size: \(audioData.count) bytes")
-            print("   - Total form data size: \(formData.count) bytes")
-        }
-        
         return formData
     }
     
     // Get available voices from ElevenLabs
     func getAvailableVoices() async throws -> [ElevenLabsVoice] {
-        let url = URL(string: "\(baseURL)/voices")!
+        let url = URL(string: "\(baseURL)?path=voices")!
         var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         
         let (data, response) = try await session.data(for: request)
         
@@ -660,9 +561,7 @@ class ElevenLabsService: ObservableObject {
     }
     
     func cloneVoice(audioData: Data, name: String, description: String) async throws -> String {
-        guard !apiKey.isEmpty else {
-            throw ElevenLabsError.missingAPIKey
-        }
+        // API key is handled by the secure proxy
         
         voiceCloneProgress = 0.1
         
@@ -679,10 +578,10 @@ class ElevenLabsService: ObservableObject {
     }
     
     private func uploadVoiceCloneFromData(audioData: Data, name: String, description: String) async throws -> String {
-        let url = URL(string: "\(baseURL)/voices/add")!
+        let url = URL(string: "\(baseURL)?path=voices/add")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         
         // Create multipart form data
         let boundary = UUID().uuidString
@@ -726,10 +625,10 @@ class ElevenLabsService: ObservableObject {
         isGeneratingAudio = true
         defer { isGeneratingAudio = false }
         
-        let url = URL(string: "\(baseURL)/text-to-speech/\(voiceId)")!
+        let url = URL(string: "\(baseURL)?path=text-to-speech/\(voiceId)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         // Create request body with settings
@@ -754,7 +653,7 @@ class ElevenLabsService: ObservableObject {
         
         // Log performance (should be < 3 seconds)
         if responseTime > 3.0 {
-            print("⚠️ ElevenLabs response time: \(responseTime)s (target: <3s)")
+            
         }
         
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -779,7 +678,7 @@ class ElevenLabsService: ObservableObject {
     func getUsageStats() async throws -> UsageStats {
         let url = URL(string: "\(baseURL)/user/subscription")!
         var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         
         let (data, response) = try await session.data(for: request)
         
@@ -805,7 +704,7 @@ class ElevenLabsService: ObservableObject {
         let url = URL(string: "\(baseURL)/voices/\(voiceId)")!
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        // API key is handled by the secure proxy
         
         let (_, response) = try await session.data(for: request)
         
@@ -911,21 +810,3 @@ enum ElevenLabsError: LocalizedError {
         }
     }
 }
-
-
-
-    // MARK: - Additional Methods for ViewModel Compatibility
-    
-    /// Clone user's voice from audio data (ViewModel compatibility)
-   
-    
-    /// Upload audio data and create voice clone
-    
-    
-    /// Generate speech with voice ID and settings (ViewModel compatibility)
-    
-    
-    /// Delete voice from ElevenLabs
-    
-
-

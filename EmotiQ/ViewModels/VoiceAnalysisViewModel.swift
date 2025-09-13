@@ -71,7 +71,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             object: testResult
         )
         
-        print("🧪 Test emotion campaign triggered for anger")
+       
     }
     
     // Test predictive intervention
@@ -83,7 +83,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             dayOfWeek: Calendar.current.component(.weekday, from: Date())
         )
         
-        print("🔮 Generated \(predictions.count) predictions")
+        
         
         // This should schedule notifications for predicted emotional needs
     }
@@ -102,7 +102,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             object: testAchievement
         )
         
-        print("🎉 Test achievement campaign triggered")
+   
     }
     
     // Removed test method that was causing duplicate notifications
@@ -114,13 +114,10 @@ class VoiceAnalysisViewModel: ObservableObject {
     
     /// Starts voice recording with real-time monitoring
     func startRecording() async {
-        print("🎤 Starting voice recording...")
-        print("🔍 DEBUG: canRecord = \(canRecord)")
-        print("🔍 DEBUG: Current daily usage = \(dailyUsageCount)")
-        print("🔍 DEBUG: Daily limit = \(dailyUsageLimit)")
+
         
         guard canRecord else {
-            print("❌ DEBUG: Recording blocked - daily limit reached")
+           
             showingLimitAlert = true
             return
         }
@@ -137,12 +134,9 @@ class VoiceAnalysisViewModel: ObservableObject {
         // Start recording timer
         startRecordingTimer()
             
-            print("✅ Recording started successfully")
+        
             
         } catch {
-            print("❌ Failed to start recording: \(error)")
-            print("🔍 DEBUG: Error type: \(type(of: error))")
-            print("🔍 DEBUG: Error description: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             showingErrorAlert = true
         }
@@ -150,7 +144,7 @@ class VoiceAnalysisViewModel: ObservableObject {
     
     /// Stops recording and analyzes emotion
     func stopRecording() async {
-        print("⏹️ Stopping recording and analyzing emotion...")
+      
         
         guard isRecording else { return }
         
@@ -162,12 +156,12 @@ class VoiceAnalysisViewModel: ObservableObject {
         do {
             // Stop recording and get URL
             let recordingURL = try await audioProcessingService.stopRecording()
-            print("📁 Recording saved to: \(recordingURL.lastPathComponent)")
+       
             
             // Analyze emotion using CoreML
-            print("🧠 Starting emotion analysis...")
+           
             let result = try await emotionService.analyzeEmotion(from: recordingURL)
-            print("✅ Emotion analysis completed: \(result.primaryEmotion)")
+   
             
             // Update daily usage IMMEDIATELY
             await updateDailyUsage()
@@ -182,10 +176,9 @@ class VoiceAnalysisViewModel: ObservableObject {
         analysisResult = result
         showingAnalysisResult = true
             
-            print("🎉 Voice analysis completed successfully")
             
         } catch {
-            print("❌ Voice analysis failed: \(error)")
+ 
             errorMessage = error.localizedDescription
             showingErrorAlert = true
         }
@@ -195,7 +188,7 @@ class VoiceAnalysisViewModel: ObservableObject {
     
     /// Cancels current recording
     func cancelRecording() {
-        print("❌ Cancelling recording...")
+     
         
         guard isRecording else { return }
         
@@ -207,26 +200,25 @@ class VoiceAnalysisViewModel: ObservableObject {
         audioLevel = 0
         currentRecordingURL = nil
         
-        print("✅ Recording cancelled")
+    
     }
     
     /// Refreshes daily and weekly usage count
     func checkDailyUsage() {
-        print("🔍 DEBUG: checkDailyUsage() called")
+     
         
         // First refresh the subscription service to check for daily and weekly reset
-        print("🔍 DEBUG: Refreshing subscription service daily usage...")
+
         subscriptionService.refreshDailyUsage()
-        print("🔍 DEBUG: Refreshing subscription service weekly usage...")
+        
         subscriptionService.refreshWeeklyUsage()
         
         // Then update our local state
         dailyUsageCount = subscriptionService.dailyUsage
         weeklyUsageCount = subscriptionService.weeklyUsage
-        print("🔍 DEBUG: Updated local state - dailyUsageCount: \(dailyUsageCount), weeklyUsageCount: \(weeklyUsageCount)")
+
         updateCanRecord()
-        print("📊 Current daily usage: \(dailyUsageCount)/\(dailyUsageLimit)")
-        print("📊 Current weekly usage: \(weeklyUsageCount)/\(weeklyUsageLimit)")
+
     }
     
     // MARK: - Private Methods
@@ -262,7 +254,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             .sink { [weak self] newCount in
                 self?.dailyUsageCount = newCount
                 self?.updateCanRecord()
-                print("📊 Daily usage updated: \(newCount)")
+            
             }
             .store(in: &cancellables)
         
@@ -272,7 +264,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             .sink { [weak self] newCount in
                 self?.weeklyUsageCount = newCount
                 self?.updateCanRecord()
-                print("📊 Weekly usage updated: \(newCount)")
+           
             }
             .store(in: &cancellables)
         
@@ -281,7 +273,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.checkDailyUsage()
-                print("🔄 Daily usage reset detected - refreshing UI")
+       
                 
                 // CRITICAL FIX: Reset audio session state after daily usage reset
                 // This prevents the "Failed to record audio" error that occurs
@@ -297,7 +289,7 @@ class VoiceAnalysisViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.checkDailyUsage()
-                print("🔄 Weekly usage reset detected - refreshing UI")
+             
                 
                 // CRITICAL FIX: Reset audio session state after weekly usage reset
                 // This prevents the "Failed to record audio" error that occurs
@@ -314,9 +306,6 @@ class VoiceAnalysisViewModel: ObservableObject {
         let withinWeeklyLimit = weeklyUsageCount < weeklyUsageLimit
         canRecord = hasSubscription || withinWeeklyLimit
         
-        print("🎯 Can record: \(canRecord) (subscription: \(hasSubscription), weekly usage: \(weeklyUsageCount)/\(weeklyUsageLimit))")
-        print("🔍 DEBUG: updateCanRecord() - hasSubscription: \(hasSubscription), withinWeeklyLimit: \(withinWeeklyLimit)")
-        print("🔍 DEBUG: updateCanRecord() - weeklyUsageCount: \(weeklyUsageCount), weeklyUsageLimit: \(weeklyUsageLimit)")
     }
     
     private func updateDailyUsage() async {
@@ -328,31 +317,28 @@ class VoiceAnalysisViewModel: ObservableObject {
         weeklyUsageCount = subscriptionService.weeklyUsage
         updateCanRecord()
         
-        print("📈 Daily usage incremented to: \(dailyUsageCount)")
-        print("📈 Weekly usage incremented to: \(weeklyUsageCount)")
     }
     
     /// Resets audio session state after daily usage reset to prevent recording errors
     private func resetAudioSessionAfterDailyReset() async {
-        print("🔧 Resetting audio session state after daily usage reset...")
+    
         
         do {
             // Deactivate current audio session to clear any corrupted state
             try await AudioSessionManager.shared.deactivateAudioSession()
-            print("✅ Audio session deactivated successfully")
+    
             
             // Small delay to ensure clean state
             try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
             
             // Reconfigure audio session for recording
             try await AudioSessionManager.shared.configureAudioSession(for: .recording)
-            print("✅ Audio session reconfigured for recording")
+       
             
-            print("🔧 Audio session reset completed successfully")
+         
             
         } catch {
-            print("❌ Failed to reset audio session: \(error)")
-            print("🔍 DEBUG: Audio session reset error type: \(type(of: error))")
+          
         }
     }
     
@@ -373,13 +359,10 @@ class VoiceAnalysisViewModel: ObservableObject {
             voiceFeatures = VoiceFeatures.fromProductionFeatures(audioFeatures)
             
             // Log the enhanced features for debugging
-            print("🎯 Enhanced VoiceFeatures created:")
-            print("   - Core features: pitch=\(voiceFeatures!.pitch), energy=\(voiceFeatures!.energy)")
-            print("   - Enhanced features: \(voiceFeatures!.featureSummary)")
-            print("   - Total features: \(voiceFeatures!.featureCount)")
+
         } else {
             voiceFeatures = nil
-            print("⚠️ No audio features available for conversion")
+          
         }
         
         // Convert EmotionAnalysisResult to EmotionalData
@@ -394,9 +377,9 @@ class VoiceAnalysisViewModel: ObservableObject {
         // Save to Core Data
         persistenceController.saveEmotionalData(emotionalData, for: user)
         
-        print("💾 Enhanced emotional data saved to Core Data: \(result.primaryEmotion.displayName)")
+    
         if let features = voiceFeatures {
-            print("📊 Data preservation: \(features.hasEnhancedFeatures ? "Enhanced" : "Basic") features (\(features.featureCount) total)")
+
         }
     }
     

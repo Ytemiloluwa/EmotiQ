@@ -29,6 +29,7 @@ struct VoiceStabilityChart: View {
         )
     }
     
+    
     private var yAxisScale: Double {
         guard let processed = processedData else { return VoiceStabilityChartConfig.YAxisScaling.defaultScale }
         
@@ -36,15 +37,10 @@ struct VoiceStabilityChart: View {
         let maxShimmer = processed.dataPoints.compactMap { $0.shimmer }.max() ?? 0
         let maxValue = max(maxJitter, maxShimmer)
         
-        // Ensure Y-axis includes threshold values for better visibility
-        let thresholds = self.thresholds
-        let maxThreshold = max(thresholds.calm, thresholds.normal, thresholds.expressive)
-        let adjustedMaxValue = max(maxValue, maxThreshold * 1.2) // Add 20% padding above thresholds
+        // Ensure Y-axis can handle extreme values from loud speaker tests
+        let adjustedMaxValue = max(maxValue * 1.3, 0.1) // Add 30% padding and minimum 10%
         
-        return VoiceStabilityChartConfig.YAxisScaling.calculateScale(
-            for: adjustedMaxValue,
-            dataCount: processed.dataPoints.count
-        )
+        return adjustedMaxValue
     }
     
     private var thresholds: (calm: Double, normal: Double, expressive: Double) {
@@ -70,6 +66,7 @@ struct VoiceStabilityChart: View {
                     processDataForPeriod(period)
                 }
             )
+            
             
             // Chart Container
             chartContainer
@@ -122,7 +119,12 @@ struct VoiceStabilityChart: View {
             if isLoading {
                 loadingView
             } else if let processed = processedData, !processed.dataPoints.isEmpty {
-                chartView(for: processed)
+                // Choose chart type based on data characteristics
+                if shouldUseHistogram(for: processed) {
+                    histogramView(for: processed)
+                } else {
+                    chartView(for: processed)
+                }
             } else {
                 emptyStateView
             }
@@ -136,13 +138,141 @@ struct VoiceStabilityChart: View {
         )
     }
     
+    
+    // MARK: - Chart Type Decision
+    private func shouldUseHistogram(for processed: ProcessedChartData) -> Bool {
+        // Use histogram for large datasets or when data has extreme values
+        let dataCount = processed.dataPoints.count
+        let maxJitter = processed.dataPoints.compactMap { $0.jitter }.max() ?? 0
+        let maxShimmer = processed.dataPoints.compactMap { $0.shimmer }.max() ?? 0
+        let maxValue = max(maxJitter, maxShimmer)
+        
+        // Better logic for detecting extreme values
+        let hasExtremeValues = maxValue > 0.1 // More than 10% (loud speaker test range)
+        let hasLargeRange = maxValue > 0.05 // More than 5% range
+        let isLargeDataset = dataCount > 15 // More than 15 data points
+        
+        return isLargeDataset || hasExtremeValues || hasLargeRange
+    }
+    
+    // MARK: - Histogram View
+    private func histogramView(for processed: ProcessedChartData) -> some View {
+        VStack(spacing: 8) {
+            // Y-axis labels
+            HStack(alignment: .top, spacing: 8) {
+                // Y-axis labels
+                VStack(alignment: .trailing, spacing: 0) {
+                    ForEach((0...5).reversed(), id: \.self) { i in
+                        Text(String(format: "%.1f%%", Double(i) * (yAxisScale * 100) / 5))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .frame(height: 30)
+                    }
+                }
+                .frame(width: 50)
+                .padding(.bottom, 8)
+                
+                // Histogram chart area
+                GeometryReader { geometry in
+                    ZStack {
+                        // Background grid
+                        ForEach(0..<6, id: \.self) { i in
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.1))
+                                .frame(height: 1)
+                                .offset(y: CGFloat(i) * geometry.size.height / 5 - geometry.size.height / 2)
+                        }
+                        
+                        // Histogram bars
+                        HStack(alignment: .bottom, spacing: 2) {
+                            ForEach(Array(processed.dataPoints.enumerated()), id: \.offset) { index, item in
+                                let width = geometry.size.width
+                                let height = geometry.size.height
+                                let barWidth = max((width - CGFloat(processed.dataPoints.count - 1) * 2) / CGFloat(processed.dataPoints.count), 4)
+                                
+                                HStack(alignment: .bottom, spacing: 1) {
+                                    // Jitter bar (blue)
+                                    if let jitter = item.jitter {
+                                        let scaledHeight = max(CGFloat(min(max(jitter / yAxisScale, 0.0), 1.0)) * height, 2)
+                                        RoundedRectangle(cornerRadius: 1)
+                                            .fill(VoiceStabilityChartConfig.Visual.jitterColor.opacity(0.8))
+                                            .frame(
+                                                width: barWidth * 0.48,
+                                                height: scaledHeight
+                                            )
+                                            .overlay(
+                                                // Value label on top of bar
+                                                VStack {
+                                                    Text(String(format: "%.1f%%", jitter * 100))
+                                                        .font(.caption2)
+                                                        .foregroundColor(.white)
+                                                        .fontWeight(.bold)
+                                                    Spacer()
+                                                }
+                                                .opacity(scaledHeight > 20 ? 1.0 : 0.0)
+                                            )
+                                    }
+                                    
+                                    // Shimmer bar (green)
+                                    if let shimmer = item.shimmer {
+                                        let scaledHeight = max(CGFloat(min(max(shimmer / yAxisScale, 0.0), 1.0)) * height, 2)
+                                        RoundedRectangle(cornerRadius: 1)
+                                            .fill(VoiceStabilityChartConfig.Visual.shimmerColor.opacity(0.8))
+                                            .frame(
+                                                width: barWidth * 0.48,
+                                                height: scaledHeight
+                                            )
+                                            .overlay(
+                                                // Value label on top of bar
+                                                VStack {
+                                                    Text(String(format: "%.1f%%", shimmer * 100))
+                                                        .font(.caption2)
+                                                        .foregroundColor(.white)
+                                                        .fontWeight(.bold)
+                                                    Spacer()
+                                                }
+                                                .opacity(scaledHeight > 20 ? 1.0 : 0.0)
+                                            )
+                                    }
+                                    
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 8)
+                    }
+                }
+            }
+            .frame(height: 120) // Reduced height to prevent screen overflow
+            .padding(.top, 8)
+            .padding(.bottom, 0)
+            .clipped()
+            
+            // X-axis labels (dates)
+            HStack {
+                ForEach(Array(processed.dataPoints.enumerated()), id: \.offset) { index, item in
+                    Text(formatDate(item.timestamp, for: processed.period))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .rotationEffect(.degrees(-45))
+                        .frame(width: 60)
+                    
+                    if index < processed.dataPoints.count - 1 {
+                        Spacer()
+                    }
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
+    
     // MARK: - Enhanced Chart View (FIXED)
     private func chartView(for processed: ProcessedChartData) -> some View {
-        Chart {
+            Chart {
             // ✅ FIXED: Data marks in ForEach instead of Chart iteration
             ForEach(processed.dataPoints, id: \.timestamp) { point in
                 // Jitter line with enhanced styling
-                if let jitter = point.jitter {
+                    if let jitter = point.jitter {
                     LineMark(
                         x: .value("Date", point.timestamp),
                         y: .value("Jitter", jitter)
@@ -151,21 +281,12 @@ struct VoiceStabilityChart: View {
                     .lineStyle(StrokeStyle(lineWidth: VoiceStabilityChartConfig.Visual.lineWidth, lineCap: .round, lineJoin: .round))
                     .interpolationMethod(.catmullRom)
                     
-                    // Enhanced area with gradient
+                    // Simplified area without complex gradient
                     AreaMark(
                         x: .value("Date", point.timestamp),
                         y: .value("Jitter", jitter)
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                VoiceStabilityChartConfig.Visual.jitterColor.opacity(VoiceStabilityChartConfig.Visual.areaOpacity),
-                                VoiceStabilityChartConfig.Visual.jitterColor.opacity(0.1)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .foregroundStyle(VoiceStabilityChartConfig.Visual.jitterColor.opacity(0.2))
                     .interpolationMethod(.catmullRom)
                     
                     // Interactive point markers
@@ -188,21 +309,12 @@ struct VoiceStabilityChart: View {
                     .lineStyle(StrokeStyle(lineWidth: VoiceStabilityChartConfig.Visual.lineWidth, lineCap: .round, lineJoin: .round))
                     .interpolationMethod(.catmullRom)
                     
-                    // Enhanced area with gradient
+                    // Simplified area without complex gradient
                     AreaMark(
                         x: .value("Date", point.timestamp),
                         y: .value("Shimmer", shimmer)
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                VoiceStabilityChartConfig.Visual.shimmerColor.opacity(VoiceStabilityChartConfig.Visual.areaOpacity),
-                                VoiceStabilityChartConfig.Visual.shimmerColor.opacity(0.1)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .foregroundStyle(VoiceStabilityChartConfig.Visual.shimmerColor.opacity(0.2))
                     .interpolationMethod(.catmullRom)
                     
                     // Interactive point markers
@@ -263,7 +375,7 @@ struct VoiceStabilityChart: View {
                     }
             }
         }
-        .chartXAxis {
+            .chartXAxis {
             AxisMarks(values: .stride(by: xAxisStrideValue)) { value in
                 AxisGridLine()
                     .foregroundStyle(.secondary.opacity(VoiceStabilityChartConfig.Visual.gridOpacity))
@@ -274,16 +386,16 @@ struct VoiceStabilityChart: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
+                    }
                 }
             }
-        }
-        .chartYAxis {
+            .chartYAxis {
             AxisMarks(position: .leading, values: .stride(by: yAxisStride)) { value in
-                AxisGridLine()
+                    AxisGridLine()
                     .foregroundStyle(.secondary.opacity(VoiceStabilityChartConfig.Visual.gridOpacity))
-                AxisValueLabel {
-                    if let doubleValue = value.as(Double.self) {
-                        Text(String(format: "%.1f%%", doubleValue * 100))
+                    AxisValueLabel {
+                        if let doubleValue = value.as(Double.self) {
+                            Text(String(format: "%.1f%%", doubleValue * 100))
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -299,7 +411,7 @@ struct VoiceStabilityChart: View {
     private var chartLegend: some View {
         VStack(alignment: .leading, spacing: VoiceStabilityChartConfig.Spacing.legendSpacing) {
             // Data series legend with enhanced styling
-            HStack(spacing: 20) {
+                HStack(spacing: 20) {
                 HStack(spacing: 8) {
                     Circle()
                         .fill(VoiceStabilityChartConfig.Visual.jitterColor)
@@ -376,18 +488,18 @@ struct VoiceStabilityChart: View {
             HStack {
                 Text("Insights")
                     .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        
                 Spacer()
                 
                 Button("View Details") {
                     showingDataDetails = true
                 }
-                .font(.caption2)
-                .foregroundColor(.blue)
-            }
-            
+                                        .font(.caption2)
+                                        .foregroundColor(.blue)
+                                }
+                                
             // Quick stats
             HStack(spacing: 16) {
                 insightCard(
@@ -416,7 +528,7 @@ struct VoiceStabilityChart: View {
     private func thresholdLegendItem(color: Color, label: String, value: Double, description: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Rectangle()
+                                    Rectangle()
                     .fill(color.opacity(VoiceStabilityChartConfig.Visual.thresholdOpacity))
                     .frame(width: 16, height: 2)
                 Text(label)
@@ -428,7 +540,7 @@ struct VoiceStabilityChart: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
             Text(description)
-                .font(.caption2)
+                                        .font(.caption2)
                 .foregroundColor(.secondary)
                 .italic()
         }
@@ -437,7 +549,7 @@ struct VoiceStabilityChart: View {
     private func insightCard(title: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption2)
+                                        .font(.caption2)
                 .foregroundColor(.secondary)
             Text(value)
                 .font(.caption)
@@ -524,19 +636,19 @@ struct VoiceStabilityChart: View {
         
         return VStack(alignment: .trailing, spacing: 2) {
             HStack(spacing: 6) {
-                Circle()
-                    .fill(color)
-                    .frame(width: 8, height: 8)
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
                     .overlay(
                         Circle()
                             .stroke(color.opacity(0.3), lineWidth: 2)
                             .scaleEffect(1.5)
                     )
-                Text(text)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(color)
-            }
+            Text(text)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(color)
+        }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
@@ -647,6 +759,7 @@ struct VoiceStabilityChart: View {
     }
     
     // MARK: - Helper Functions
+    
     private var xAxisStride: Calendar.Component {
         guard let processed = processedData else { return .day }
         return VoiceStabilityChartConfig.XAxisConfig.labelStride(

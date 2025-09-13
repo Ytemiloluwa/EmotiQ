@@ -55,58 +55,50 @@ class EmotionalInterventionPredictor: ObservableObject {
     
     private func loadEmotionalStateModel() {
         guard let modelURL = Bundle.main.url(forResource: "EmotionalStatePredictor", withExtension: "mlmodelc") else {
-            print("⚠️ EmotionalStatePredictor model not found, will create new one")
+         
             return
         }
         
         do {
             emotionalStateModel = try MLModel(contentsOf: modelURL)
-            print("✅ Loaded EmotionalStatePredictor model")
+           
         } catch {
-            print("❌ Failed to load EmotionalStatePredictor: \(error)")
+         
         }
     }
     
     private func loadInterventionTimingModel() {
         guard let modelURL = Bundle.main.url(forResource: "InterventionTimingOptimizer", withExtension: "mlmodelc") else {
-            print("⚠️ InterventionTimingOptimizer model not found, will create new one")
+         
             return
         }
         
         do {
             interventionTimingModel = try MLModel(contentsOf: modelURL)
-            print("✅ Loaded InterventionTimingOptimizer model")
+            
         } catch {
-            print("❌ Failed to load InterventionTimingOptimizer: \(error)")
+           
         }
     }
     
     private func loadInterventionEffectivenessModel() {
         guard let modelURL = Bundle.main.url(forResource: "InterventionEffectivenessPredictor", withExtension: "mlmodelc") else {
-            print("⚠️ InterventionEffectivenessPredictor model not found, will create new one")
+           
             return
         }
         
         do {
             interventionEffectivenessModel = try MLModel(contentsOf: modelURL)
-            print("✅ Loaded InterventionEffectivenessPredictor model")
+      
         } catch {
-            print("❌ Failed to load InterventionEffectivenessPredictor: \(error)")
+     
         }
     }
     
     // MARK: - Data Collection Setup
     private func setupDataCollection() {
-        // Collect training data from user interactions
-        NotificationCenter.default.publisher(for: .emotionalDataSaved)
-            .sink { [weak self] notification in
-                if let result = notification.object as? EmotionAnalysisResult {
-                    Task { @MainActor in
-                        await self?.collectEmotionData(result)
-                    }
-                }
-            }
-            .store(in: &cancellables)
+        // Note: Emotion analysis results are now handled by OneSignalService
+        // to prevent duplicate processing. This observer has been removed.
         
         NotificationCenter.default.publisher(for: .notificationInterventionCompleted)
             .sink { [weak self] notification in
@@ -129,8 +121,8 @@ class EmotionalInterventionPredictor: ObservableObject {
         
         var predictions: [EmotionalPrediction] = []
         
-        // Predict emotional states for next 24-72 hours
-        let predictionHorizons: [TimeInterval] = [3600, 7200, 14400, 28800, 86400, 172800] // 1h, 2h, 4h, 8h, 24h, 48h
+        // Predict emotional states for next 24 hours only (OneSignal API limitation)
+        let predictionHorizons: [TimeInterval] = [3600, 7200, 14400, 28800, 86400] // 1h, 2h, 4h, 8h, 24h (removed 48h)
         
         for horizon in predictionHorizons {
             if let prediction = await predictEmotionalStateAtTime(
@@ -144,7 +136,7 @@ class EmotionalInterventionPredictor: ObservableObject {
             }
         }
         
-        return predictions.filter { $0.confidence >= Config.predictionConfidenceThreshold }
+        return predictions // Return all predictions regardless of confidence
     }
     
     private func predictEmotionalStateAtTime(
@@ -199,7 +191,7 @@ class EmotionalInterventionPredictor: ObservableObject {
                 )
             }
         } catch {
-            print("❌ ML prediction failed: \(error)")
+            
         }
         
         return nil
@@ -257,7 +249,7 @@ class EmotionalInterventionPredictor: ObservableObject {
                 }
             }
         } catch {
-            print("❌ Timing prediction failed: \(error)")
+           
         }
         
         return nil
@@ -353,7 +345,7 @@ class EmotionalInterventionPredictor: ObservableObject {
                 return effectiveness
             }
         } catch {
-            print("❌ Effectiveness prediction failed: \(error)")
+      
         }
         
         return 0.5 // Default moderate effectiveness
@@ -377,63 +369,63 @@ class EmotionalInterventionPredictor: ObservableObject {
     }
     
     private func predictEffectivenessRuleBased(
-          intervention: OneSignaInterventionType,
-          emotion: EmotionType,
-          history: UserInterventionHistory
-      ) -> Double {
-          // Rule-based effectiveness prediction
-          
-          // Check historical effectiveness for this intervention-emotion combination
-          let historicalEffectiveness = history.averageEffectiveness(
-              intervention: intervention,
-              emotion: emotion
-          )
-          
-          if historicalEffectiveness > 0 {
-              return historicalEffectiveness
-          }
-          
-          // Default effectiveness based on intervention-emotion matching
-          let baseEffectiveness: Double
-          
-          switch (intervention, emotion) {
-          case (.gratitudePractice, .joy):
-              baseEffectiveness = 0.9
-          case (.gratitudePractice, .sadness):
-              baseEffectiveness = 0.8
-          case (.selfCompassionBreak, .sadness):
-              baseEffectiveness = 0.9
-          case (.selfCompassionBreak, .anger):
-              baseEffectiveness = 0.7
-          case (.coolingBreath, .anger):
-              baseEffectiveness = 0.9
-          case (.groundingExercise, .fear):
-              baseEffectiveness = 0.9
-          case (.mindfulnessCheck, .neutral):
-              baseEffectiveness = 0.8
-          case (.breathingExercise, _):
-              baseEffectiveness = 0.7 // Generally effective for all emotions
-          default:
-              baseEffectiveness = 0.6 // Moderate default effectiveness
-          }
-          
-          // Adjust based on user's general responsiveness
-          let userResponsiveness = history.getOverallResponsiveness()
-          return min(1.0, baseEffectiveness * (0.5 + userResponsiveness * 0.5))
-      }
-      
+        intervention: OneSignaInterventionType,
+        emotion: EmotionType,
+        history: UserInterventionHistory
+    ) -> Double {
+        // Rule-based effectiveness prediction
+        
+        // Check historical effectiveness for this intervention-emotion combination
+        let historicalEffectiveness = history.averageEffectiveness(
+            intervention: intervention,
+            emotion: emotion
+        )
+        
+        if historicalEffectiveness > 0 {
+            return historicalEffectiveness
+        }
+        
+        // Default effectiveness based on intervention-emotion matching
+        let baseEffectiveness: Double
+        
+        switch (intervention, emotion) {
+        case (.gratitudePractice, .joy):
+            baseEffectiveness = 0.9
+        case (.gratitudePractice, .sadness):
+            baseEffectiveness = 0.8
+        case (.selfCompassionBreak, .sadness):
+            baseEffectiveness = 0.9
+        case (.selfCompassionBreak, .anger):
+            baseEffectiveness = 0.7
+        case (.coolingBreath, .anger):
+            baseEffectiveness = 0.9
+        case (.groundingExercise, .fear):
+            baseEffectiveness = 0.9
+        case (.mindfulnessCheck, .neutral):
+            baseEffectiveness = 0.8
+        case (.breathingExercise, _):
+            baseEffectiveness = 0.7 // Generally effective for all emotions
+        default:
+            baseEffectiveness = 0.6 // Moderate default effectiveness
+        }
+        
+        // Adjust based on user's general responsiveness
+        let userResponsiveness = history.getOverallResponsiveness()
+        return min(1.0, baseEffectiveness * (0.5 + userResponsiveness * 0.5))
+    }
+    
     private func extractEffectiveness(from prediction: MLFeatureProvider) -> Double? {
-          // Extract effectiveness score from ML model prediction
-          if let effectivenessValue = prediction.featureValue(for: "effectiveness_score") {
-              return effectivenessValue.doubleValue
-          }
-          return nil
-      }
+        // Extract effectiveness score from ML model prediction
+        if let effectivenessValue = prediction.featureValue(for: "effectiveness_score") {
+            return effectivenessValue.doubleValue
+        }
+        return nil
+    }
     
     // MARK: - Model Training
     func trainModelsWithUserData() async {
         guard trainingData.count >= Config.minTrainingDataPoints else {
-            print("⚠️ Insufficient training data: \(trainingData.count)/\(Config.minTrainingDataPoints)")
+            
             return
         }
         
@@ -454,10 +446,7 @@ class EmotionalInterventionPredictor: ObservableObject {
             predictionAccuracy = await calculateModelAccuracy()
             lastPredictionUpdate = Date()
             
-            print("✅ Model training completed successfully")
             
-        } catch {
-            print("❌ Model training failed: \(error)")
         }
         
         isTraining = false
@@ -466,42 +455,22 @@ class EmotionalInterventionPredictor: ObservableObject {
     private func trainEmotionalStateModel() async {
         // In production iOS apps, we use rule-based + statistical learning
         // ML models are pre-trained and updated via server
-        
-        do {
-            // Use enhanced rule-based system with statistical learning
-            await updateRuleBasedPredictions()
-            
-            print("✅ Enhanced rule-based emotional state prediction updated")
-            
-        } catch {
-            print("❌ Failed to update emotional state prediction: \(error)")
-        }
+        await updateRuleBasedPredictions()
+    
     }
     
     private func trainInterventionTimingModel() async {
         // Use statistical analysis of user behavior patterns
-        do {
-            // Analyze user timing patterns from training data
-            await updateTimingPredictions()
-            
-            print("✅ User timing patterns updated")
-            
-        } catch {
-            print("❌ Failed to update timing predictions: \(error)")
-        }
+        
+        // Analyze user timing patterns from training data
+        await updateTimingPredictions()
+        
     }
     
     private func trainInterventionEffectivenessModel() async {
         // Use statistical analysis of intervention effectiveness
-        do {
-            // Analyze intervention effectiveness patterns
-            await updateEffectivenessPredictions()
-            
-            print("✅ Intervention effectiveness patterns updated")
-            
-        } catch {
-            print("❌ Failed to update effectiveness predictions: \(error)")
-        }
+        
+        await updateEffectivenessPredictions()
     }
     
     // MARK: - Data Collection
@@ -547,7 +516,7 @@ class EmotionalInterventionPredictor: ObservableObject {
         }
     }
     
-
+    
     
     private func calculateEngagementScore(_ trainingPoint: EmotionalTrainingData) -> Double {
         // Calculate engagement score based on training point data
@@ -993,4 +962,3 @@ extension EmotionType {
         return [.joy, .sadness, .anger, .fear, .surprise, .disgust, .neutral]
     }
 }
-

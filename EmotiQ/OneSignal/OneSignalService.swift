@@ -4,20 +4,17 @@
 //
 //  Created by Temiloluwa on 24-08-2025.
 //
-
-//  Production-ready OneSignal service for emotion-triggered notifications and predictive interventions
-//
-
 import Foundation
 import OneSignalFramework
 import Combine
 import CoreML
 import UserNotifications
 import NaturalLanguage
+import CoreData
 
 // MARK: - OneSignal Service
 @MainActor
-class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener {
+class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener, UNUserNotificationCenterDelegate {
     
     // MARK: - Shared Instance
     static let shared = OneSignalService()
@@ -35,7 +32,11 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     private let hapticManager = HapticManager.shared
     private let persistenceController = PersistenceController.shared
     private var cancellables = Set<AnyCancellable>()
-    private var hasTriggeredWelcomeNotification = false
+    private var hasTriggeredWelcomeNotification: Bool {
+        get { UserDefaults.standard.bool(forKey: "hasTriggeredWelcomeNotification") }
+        set { UserDefaults.standard.set(newValue, forKey: "hasTriggeredWelcomeNotification") }
+    }
+    private var isSendingWelcomeNotification = false
     private var hasSetupUserTags = false
     
     // Predictive intervention system
@@ -46,10 +47,9 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     // MARK: - Configuration
     private struct config {
         static let appId = Config.oneSignalAppID
-         // User will replace this
-        static let baseURL = "https://onesignal.com/api/v1"
-        static let maxNotificationsPerDay = 5
-        static let minIntervalBetweenNotifications: TimeInterval = 3600 // 1 hour
+        // Use secure proxy instead of direct OneSignal API
+        static let baseURL = "https://emotiq-api-proxy-v2.vercel.app/api/onesignal"
+        // Removed notification limits - no maximum daily notifications or minimum intervals
         // Removed emotionAnalysisThreshold - now triggers notifications for all emotions regardless of confidence
     }
     
@@ -74,6 +74,9 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
         
         // Set up emotion data observers
         setupEmotionDataObservers()
+        
+        // Set up local notification categories
+        setupNotificationCategories()
         
         // Initialize user state
         initializeUserState()
@@ -129,14 +132,24 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             Task { @MainActor in
                 self.notificationPermissionStatus = .authorized
                 self.setupUserTags()
-                self.scheduleInitialWelcomeNotification()
+                // Try to send welcome notification if this is first launch and not sent yet
+                if !self.hasTriggeredWelcomeNotification {
+                    self.scheduleInitialWelcomeNotification()
+                }
             }
             return
         }
         
         OneSignal.Notifications.requestPermission({ accepted in
+           
             // Don't rely on the callback result - it's unreliable
             // Instead, let the subscription state monitoring handle the permission check
+            Task { @MainActor in
+                // Force a permission check after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.forceSyncPermissionStatus()
+                }
+            }
         }, fallbackToSettings: true)
     }
     
@@ -207,12 +220,27 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
         let subscriptionId = OneSignal.User.pushSubscription.id
         let optedIn = OneSignal.User.pushSubscription.optedIn
         
+        
         Task { @MainActor in
             // Update our internal status based on actual OneSignal state
             if actualPermission || optedIn {
                 self.notificationPermissionStatus = .authorized
+                
+                // If we have permission and subscription, try to send welcome notification
+                if !(subscriptionId?.isEmpty ?? true) && !self.hasTriggeredWelcomeNotification && !self.isSendingWelcomeNotification {
+
+                    self.setupUserTags()
+                    self.scheduleInitialWelcomeNotification()
+                } else if self.hasTriggeredWelcomeNotification {
+               
+                } else if self.isSendingWelcomeNotification {
+                 
+                } else {
+               
+                }
             } else {
                 self.notificationPermissionStatus = .denied
+            
             }
         }
     }
@@ -248,17 +276,137 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             .store(in: &cancellables)
     }
     
+    // MARK: - Local Notification Categories
+    private func setupNotificationCategories() {
+        // Create emotion check-in category with actions
+        let checkInAction = UNNotificationAction(
+            identifier: "check_in",
+            title: "Check In",
+            options: [.foreground]
+        )
+        
+        let remindLaterAction = UNNotificationAction(
+            identifier: "remind_later",
+            title: "Remind Later",
+            options: []
+        )
+        
+        let emotionCheckInCategory = UNNotificationCategory(
+            identifier: "emotion_checkin",
+            actions: [checkInAction, remindLaterAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        
+        // Register the category
+        UNUserNotificationCenter.current().setNotificationCategories([emotionCheckInCategory])
+        
+        // Set delegate for handling notification actions
+        UNUserNotificationCenter.current().delegate = self
+    }
+    
+    // MARK: - UNUserNotificationCenterDelegate
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Save local notification to history when it's received
+        Task {
+            await saveLocalNotificationToHistory(notification)
+        }
+        
+        // Show notification with sound and badge
+        completionHandler([.banner, .sound, .badge])
+    }
+    
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        
+        switch response.actionIdentifier {
+        case "check_in":
+            // User tapped "Check In" - send OneSignal notification with rich content
+            handleCheckInAction(userInfo: userInfo)
+        case "remind_later":
+            // User tapped "Remind Later" - reschedule for 1 hour later
+            handleRemindLaterAction(userInfo: userInfo)
+        default:
+            // User tapped the notification itself
+            handleNotificationTap(userInfo: userInfo)
+        }
+        
+        completionHandler()
+    }
+    
+    private func handleCheckInAction(userInfo: [AnyHashable: Any]) {
+        // Send rich OneSignal notification when user wants to check in
+        let content = NotificationContent(
+            title: "💫 Let's Check In",
+            body: "Take a moment to reflect on how you're feeling right now.",
+            actionButtons: [
+                NotificationActionButton(id: "start_voice_analysis", text: "Voice Check"),
+                NotificationActionButton(id: "mindfulness_exercise", text: "Mindfulness")
+            ],
+            customData: [
+                "type": "emotion_checkin",
+                "source": "predictive_intervention",
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ],
+            categoryIdentifier: "emotion_intervention",
+            sound: .default,
+            badge: 1,
+            userInfo: [:]
+        )
+        
+        Task {
+            await sendNotificationWithContent(content, hapticPattern: .neutral)
+            await saveNotificationToHistory([
+                "type": "emotion_checkin",
+                "title": content.title,
+                "body": content.body,
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ])
+        }
+    }
+    
+    private func handleRemindLaterAction(userInfo: [AnyHashable: Any]) {
+        // Reschedule for 1 hour later
+        let newTime = Date().addingTimeInterval(3600) // 1 hour
+        
+        let content = UNMutableNotificationContent()
+        content.title = "💫 Emotional Check-in"
+        content.body = "How are you feeling right now? Let's take a mindful moment to check in."
+        content.sound = .default
+        content.categoryIdentifier = "emotion_checkin"
+        content.userInfo = userInfo
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3600, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "predictive_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        
+        Task {
+            try? await UNUserNotificationCenter.current().add(request)
+          
+        }
+    }
+    
+    
+    private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
+        // Handle when user taps the notification itself
+      
+    }
+    
     // MARK: - Emotion Detection Integration
     private func setupEmotionObservers() {
-        // Observe emotion analysis results
-        emotionService.$lastAnalysisResult
-            .compactMap { $0 }
-            .sink { [weak self] result in
-                Task { @MainActor in
-                    await self?.processEmotionAnalysisResult(result)
-                }
-            }
-            .store(in: &cancellables)
+        // Note: Emotion analysis results are handled by setupEmotionDataObservers()
+        // to avoid duplicate processing. This method is kept for speech analysis only.
         
         // Observe speech analysis results
         speechService.$lastTranscription
@@ -294,28 +442,41 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     
     // MARK: - Emotion-Triggered Notifications
     private func processEmotionAnalysisResult(_ result: EmotionAnalysisResult) async {
-        print("🔍 DEBUG: processEmotionAnalysisResult() called")
-        print("🔍 DEBUG: Emotion: \(result.primaryEmotion.rawValue), Confidence: \(result.confidence), Intensity: \(result.intensity.threshold)")
+
         
         // Update user tags with current emotional state
         updateEmotionalStateTags(result)
         
         // Check if intervention is needed
         let shouldTrigger = shouldTriggerIntervention(for: result)
-        print("🔍 DEBUG: shouldTriggerIntervention returned: \(shouldTrigger)")
+        
         
         if shouldTrigger {
-            print("🔍 DEBUG: Triggering emotion-based intervention for \(result.primaryEmotion.rawValue)")
+
             await triggerEmotionBasedIntervention(result)
         } else {
-            print("🔍 DEBUG: No intervention triggered for \(result.primaryEmotion.rawValue)")
+
         }
         
-        // Update predictive model with new data
+        // Delegate to other systems (instead of duplicate observers)
+        await delegateToOtherSystems(result)
+    }
+    
+    // MARK: - System Delegation
+    private func delegateToOtherSystems(_ result: EmotionAnalysisResult) async {
+        // 1. Update predictive model with new data
         await interventionPredictor.updateWithEmotionData(result)
         
-        // Schedule future interventions based on patterns
-        await schedulePredictiveInterventions(basedOn: result)
+        // 2. Record emotion analysis for behavior tracking
+        await behaviorAnalyzer.recordEmotionAnalysis(
+            emotion: convertEmotionCategoryToType(result.primaryEmotion),
+            confidence: result.confidence,
+            intensity: result.intensity.threshold,
+            context: ["source": "voice_analysis"]
+        )
+        
+        // 3. Schedule future interventions using local notifications (reliable scheduling)
+        await schedulePredictiveInterventionsLocally(basedOn: result)
     }
     
     private func processSpeechAnalysisResult(_ transcription: String) async {
@@ -337,8 +498,8 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     }
     
     // MARK: - Predictive Intervention System
-    private func schedulePredictiveInterventions(basedOn result: EmotionAnalysisResult) async {
-        // Use ML to predict when user will need emotional support
+    private func schedulePredictiveInterventionsLocally(basedOn result: EmotionAnalysisResult) async {
+        // Use ML to predict when user will need emotional support (limited to 24 hours)
         let predictions = await interventionPredictor.predictFutureEmotionalNeeds(
             currentEmotion: convertEmotionCategoryToType(result.primaryEmotion),
             confidence: result.confidence,
@@ -346,9 +507,56 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             dayOfWeek: Calendar.current.component(.weekday, from: Date())
         )
         
-        // Schedule notifications based on predictions
+        // Schedule local notifications for predictions (reliable scheduling)
         for prediction in predictions {
-            await scheduleInterventionNotification(prediction)
+            await scheduleLocalInterventionNotification(prediction)
+        }
+    }
+    
+    private func scheduleLocalInterventionNotification(_ prediction: EmotionalPrediction) async {
+        // Check if scheduling is within 24 hours
+        let timeUntilScheduled = prediction.optimalTime.timeIntervalSince(Date())
+        guard timeUntilScheduled > 0 && timeUntilScheduled <= 86400 else {
+  
+            return
+        }
+        
+        // Create local notification content
+        let content = UNMutableNotificationContent()
+        content.title = "💫 Emotional Check-in"
+        content.body = "How are you feeling right now? Let's take a mindful moment to check in."
+        content.sound = .default
+        content.categoryIdentifier = "emotion_checkin"
+        
+        // Add custom data for when user interacts
+        content.userInfo = [
+            "type": "predictive_intervention",
+            "emotion": prediction.predictedEmotion.rawValue,
+            "intervention": prediction.recommendedIntervention.rawValue,
+            "confidence": prediction.confidence,
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "scheduled_time": ISO8601DateFormatter().string(from: prediction.optimalTime)
+        ]
+        
+        // Create trigger for the scheduled time
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: timeUntilScheduled,
+            repeats: false
+        )
+        
+        // Create request
+        let request = UNNotificationRequest(
+            identifier: "predictive_\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        
+        // Schedule the notification
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+
+        } catch {
+          
         }
     }
     
@@ -564,15 +772,14 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     
     // MARK: - Notification Sending
     private func sendImmediateNotification(_ notification: EmotionTriggeredNotification) async {
-        print("🔍 DEBUG: sendImmediateNotification() called")
-        print("🔍 DEBUG: Notification emotion: \(notification.emotion), intervention: \(notification.interventionType)")
+ 
         
         guard canSendNotification() else {
-            print("❌ DEBUG: Cannot send immediate notification - canSendNotification() returned false")
+     
             return
         }
         
-        print("🔍 DEBUG: Can send notification, generating content")
+   
         
         let content = generatePersonalizedContent(
             emotion: notification.emotion,
@@ -580,12 +787,11 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             intervention: notification.interventionType
         )
         
-        print("🔍 DEBUG: Generated content - Title: \(content.title), Body: \(content.body)")
         
         await sendNotificationWithContent(content, hapticPattern: notification.emotion)
         updateNotificationAnalytics(for: notification.emotion)
         
-        print("🔍 DEBUG: sendImmediateNotification() completed")
+       
     }
     
     private func sendScheduledNotification(_ notification: EmotionTriggeredNotification) async {
@@ -602,10 +808,6 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     }
     
     private func sendNotificationWithContent(_ content: NotificationContent, hapticPattern: EmotionType) async {
-        print("🔍 DEBUG: sendNotificationWithContent() called")
-        print("🔍 DEBUG: Content title: \(content.title)")
-        print("🔍 DEBUG: Content body: \(content.body)")
-        print("🔍 DEBUG: Custom data: \(content.customData)")
         
         // Send via OneSignal REST API for advanced features
         let notificationData: [String: Any] = [
@@ -616,60 +818,60 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             "buttons": content.actionButtons?.map { button in
                 ["id": button.id, "text": button.text]
             } ?? [],
-            "include_player_ids": [OneSignal.User.pushSubscription.id],
-            "filters": [
-                ["field": "tag", "key": "emotion_analysis_enabled", "relation": "=", "value": "true"]
-            ]
+            "include_player_ids": [OneSignal.User.pushSubscription.id]
+            // Note: Removed filters when using include_player_ids to prevent cross-user targeting
         ]
         
-        print("🔍 DEBUG: About to send notification via API")
+     
         await sendNotificationViaAPI(notificationData)
         
         // Trigger haptic feedback for immediate notifications
         hapticManager.emotionalFeedback(for: hapticPattern)
         
         lastNotificationSent = Date()
-        print("🔍 DEBUG: Notification sent, lastNotificationSent updated to: \(lastNotificationSent?.description ?? "nil")")
+
     }
     
-    func sendNotificationViaAPI(_ data: [String: Any]) async {
-        guard let url = URL(string: "\(config.baseURL)/notifications") else {
-            return
+    func sendNotificationViaAPI(_ data: [String: Any]) async -> Bool {
+        guard let url = URL(string: "\(config.baseURL)?path=notifications") else {
+            return false
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // Properly encode the API key for Basic Auth
-        let apiKey = Config.oneSignalAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let authString = "Basic \(apiKey)"
-        request.setValue(authString, forHTTPHeaderField: "Authorization")
+        // API key is handled by the secure proxy - no need to include it in the request
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: data)
             
-            // Debug: Print the request payload
+     
             if let jsonString = String(data: request.httpBody!, encoding: .utf8) {
-                print("🔍 DEBUG: OneSignal API Request Payload: \(jsonString)")
+                
             }
             
             let (responseData, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 200 {
-                    print("✅ OneSignal notification sent successfully")
+      
+                    
+                    // Save notification to history
+                    await saveNotificationToHistory(data)
+                    return true
                 } else {
-                    print("❌ OneSignal notification failed: \(httpResponse.statusCode)")
-                    // Debug: Print response body for error details
+                  
                     if let responseString = String(data: responseData, encoding: .utf8) {
-                        print("🔍 DEBUG: OneSignal API Error Response: \(responseString)")
+                       
                     }
+                    return false
                 }
             }
         } catch {
-            print("❌ OneSignal API error: \(error)")
+
         }
+        return false
     }
     
     // MARK: - Notification Handlers
@@ -815,6 +1017,62 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
         
         // Feed data to behavior analyzer
         await behaviorAnalyzer.recordAppUsage(hour: currentHour, dayOfWeek: dayOfWeek)
+        
+        // Check for streak maintenance reminder
+        await checkStreakMaintenance()
+    }
+    
+    // MARK: - Streak Maintenance Reminder
+    private func checkStreakMaintenance() async {
+        // Only send streak reminders if user has granted notification permission
+        guard OneSignal.Notifications.permission && OneSignal.User.pushSubscription.optedIn else {
+        
+            return
+        }
+        
+        // Check if user hasn't used app for 24+ hours
+        let lastAppUsage = UserDefaults.standard.object(forKey: "last_app_usage") as? Date ?? Date.distantPast
+        let hoursSinceLastUsage = Date().timeIntervalSince(lastAppUsage) / 3600
+        
+        // Update last app usage timestamp
+        UserDefaults.standard.set(Date(), forKey: "last_app_usage")
+        
+        // Send streak reminder if user hasn't used app for 24+ hours
+        if hoursSinceLastUsage >= 24 {
+            await sendStreakMaintenanceReminder()
+        }
+    }
+    
+    private func sendStreakMaintenanceReminder() async {
+        let streakMessages = [
+            ("🔥 Don't lose your streak!", "You've been doing great! Don't let your emotional wellness journey slip away."),
+            ("💪 Keep the momentum!", "Your consistency is inspiring. Let's continue your emotional growth journey!"),
+            ("🌟 You're on fire!", "Don't break your amazing streak! Your emotional wellness matters."),
+            ("🎯 Stay consistent!", "You've built something beautiful. Keep nurturing your emotional growth!")
+        ]
+        
+        let randomMessage = streakMessages.randomElement()!
+        
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": randomMessage.0],
+            "contents": ["en": randomMessage.1],
+            "buttons": [
+                ["id": "continue_streak", "text": "Continue Streak"],
+                ["id": "voice_check", "text": "Voice Check"]
+            ],
+            "data": [
+                "type": "reminder",
+                "reminder_type": "streak_maintenance",
+                "emotion": "motivation",
+                "intervention": "streak_reminder",
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ],
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""]
+        ]
+        
+        await sendNotificationViaAPI(data)
+
     }
     
     private func analyzeEmotionalPatterns() async {
@@ -864,48 +1122,26 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     }
     
     func forceUpdatePermissionStatus() {
-        print("🔍 DEBUG: Force updating permission status")
+    
         let actualPermission = OneSignal.Notifications.permission
-        print("🔍 DEBUG: Actual OneSignal permission: \(actualPermission)")
+
         
         Task { @MainActor in
             self.notificationPermissionStatus = actualPermission ? .authorized : .denied
-            print("🔍 DEBUG: Force updated notificationPermissionStatus to: \(self.notificationPermissionStatus)")
+            
         }
     }
     
     private func canSendNotification() -> Bool {
-        print("🔍 DEBUG: canSendNotification() called")
-        print("🔍 DEBUG: notificationPermissionStatus: \(notificationPermissionStatus)")
+
         
         guard notificationPermissionStatus == .authorized else {
-            print("❌ DEBUG: Cannot send notification - permission not authorized")
+            
             return false
         }
         
-        // Check daily limit
-        let today = Calendar.current.startOfDay(for: Date())
-        let notificationsToday = notificationAnalytics.getNotificationCount(since: today)
-        print("🔍 DEBUG: Notifications sent today: \(notificationsToday)/\(config.maxNotificationsPerDay)")
-        
-        guard notificationsToday < config.maxNotificationsPerDay else {
-            print("❌ DEBUG: Cannot send notification - daily limit reached")
-            return false
-        }
-        
-        // Check minimum interval
-        if let lastSent = lastNotificationSent {
-            let timeSinceLastNotification = Date().timeIntervalSince(lastSent)
-            print("🔍 DEBUG: Time since last notification: \(timeSinceLastNotification)s (min: \(config.minIntervalBetweenNotifications)s)")
-            guard timeSinceLastNotification >= config.minIntervalBetweenNotifications else {
-                print("❌ DEBUG: Cannot send notification - too soon since last notification")
-                return false
-            }
-        } else {
-            print("🔍 DEBUG: No previous notification sent")
-        }
-        
-        print("✅ DEBUG: Can send notification - all checks passed")
+        // Removed notification limits - no daily limits or minimum intervals
+
         return true
     }
     
@@ -920,19 +1156,17 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
     }
     
     private func shouldTriggerIntervention(for result: EmotionAnalysisResult) -> Bool {
-        print("🔍 DEBUG: shouldTriggerIntervention() called for \(result.primaryEmotion.rawValue)")
-        print("🔍 DEBUG: Confidence: \(result.confidence)")
-        print("🔍 DEBUG: All emotion scores: \(result.emotionScores)")
+
         
         // Trigger notifications for all emotions regardless of confidence
         // This ensures users get support whenever they record their voice
         switch result.primaryEmotion {
-        case .sadness, .anger, .fear, .disgust, .joy:
-            print("🔍 DEBUG: \(result.primaryEmotion.rawValue) - will trigger notification")
+        case .sadness, .anger, .fear, .disgust, .joy, .surprise:
+            
             return true
-        case .surprise, .neutral:
-            print("🔍 DEBUG: \(result.primaryEmotion.rawValue) - no automatic interventions")
-            return false // Don't trigger automatic interventions for surprise/neutral
+        case .neutral:
+          
+            return false // Don't trigger automatic interventions for neutral
         }
     }
     
@@ -1070,25 +1304,47 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
                 "navigation_emotion": emotion.rawValue
             ])
             
-            print("🔗 Deep link navigation triggered: \(deepLinkURL)")
+        
         }
     }
     
     // MARK: - Welcome Notification
     func scheduleInitialWelcomeNotification() {
-        // Prevent multiple welcome notifications
-        guard !hasTriggeredWelcomeNotification else {
+        // Check if this is truly a first install
+        guard isFirstAppLaunch() else {
+          
             return
         }
         
-        hasTriggeredWelcomeNotification = true
+        // Prevent multiple welcome notifications
+        guard !hasTriggeredWelcomeNotification else {
+   
+            return
+        }
         
-        // Wait for OneSignal to fully register the device
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+        // Prevent concurrent welcome notification attempts
+        guard !isSendingWelcomeNotification else {
+
+            return
+        }
+        
+        isSendingWelcomeNotification = true
+        
+        // Wait for OneSignal to fully register the device and user to grant permission
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
             Task {
                 await self.sendWelcomeNotificationWithRetry()
             }
         }
+    }
+    
+    private func isFirstAppLaunch() -> Bool {
+        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+        if !hasLaunchedBefore {
+            // Don't mark as launched until we actually send the welcome notification
+            return true
+        }
+        return false
     }
     
     private func sendWelcomeNotificationWithRetry() async {
@@ -1096,16 +1352,20 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
         let optedIn = OneSignal.User.pushSubscription.optedIn
         let permission = OneSignal.Notifications.permission
         
+        
         // Enhanced validation - check if player is fully subscribed
         guard !(playerId?.isEmpty ?? true) else {
+         
             return
         }
         
         guard optedIn else {
+     
             return
         }
         
         guard permission else {
+      
             return
         }
         
@@ -1113,7 +1373,7 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             "app_id": config.appId,
             "headings": ["en": "🎉 Welcome to EmotiQ!"],
             "contents": ["en": "Your emotional intelligence journey begins now. Discover your emotional patterns with voice analysis."],
-            "include_player_ids": [playerId],
+            "include_player_ids": [playerId!],
             "data": [
                 "notification_type": "welcome",
                 "user_journey_stage": "onboarding",
@@ -1128,13 +1388,22 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             "ios_category": "WELCOME"
         ]
         
-        await sendNotificationViaAPI(welcomeData)
+    
+        let success = await sendNotificationViaAPI(welcomeData)
+        
+        // Reset the sending flag
+        isSendingWelcomeNotification = false
+        
+        // Only mark as sent if successful
+        if success {
+            hasTriggeredWelcomeNotification = true
+            // Mark app as launched only after successful welcome notification
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            
+        } else {
+  
+        }
     }
-    
-
-    
-
-    
     
     private func scheduleNotificationForTime(_ content: NotificationContent, at time: Date) async {
         // Implementation for scheduling future notifications
@@ -1151,6 +1420,94 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
         ]
         
         await sendNotificationViaAPI(notificationData)
+    }
+
+    // MARK: - Public APIs for App Events
+    func sendStreakNotification(streak: Int, interventionTitle: String, isMilestone: Bool) async {
+        let title = isMilestone ? "🌟 Milestone Unlocked!" : "🔥 Streak Updated"
+        let body = isMilestone ? "You've hit a \(streak)-day streak! Keep it going." : "You're on a \(streak)-day streak with \(interventionTitle)."
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": title],
+            "contents": ["en": body],
+            "data": [
+                "type": "achievement",
+                "campaign_type": isMilestone ? "goal_completion" : "achievement",
+                "streak": streak,
+                "intervention": interventionTitle,
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ],
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""],
+            "ios_category": isMilestone ? "GOAL_COMPLETION" : "ACHIEVEMENT"
+        ]
+        _ = await sendNotificationViaAPI(data)
+    }
+
+    func sendFeedback(tags: [String], interventionTitle: String) async {
+        guard !tags.isEmpty else { return }
+        let text = tags.joined(separator: ", ")
+        // Tag feedback on the user profile so it is visible in OneSignal dashboard
+        OneSignal.User.addTags([
+            "last_feedback_tags": text,
+            "last_feedback_intervention": interventionTitle,
+            "last_feedback_time": ISO8601DateFormatter().string(from: Date())
+        ])
+        let data: [String: Any] = [
+            "app_id": config.appId,
+            "headings": ["en": "Thanks for your feedback"],
+            "contents": ["en": "You marked: \(text) for \(interventionTitle)."],
+            "data": [
+                "type": "feedback",
+                "intervention": interventionTitle,
+                "feedback_tags": text,
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ],
+            "include_player_ids": [OneSignal.User.pushSubscription.id ?? ""]
+        ]
+        _ = await sendNotificationViaAPI(data)
+    }
+    
+    // MARK: - In-App Messages: Tags & Triggers
+    func tagCompletionAndTriggerIAM(interventionTitle: String, category: String, durationSeconds: Int, rating: Int) async {
+        OneSignal.User.addTags([
+            "last_session_title": interventionTitle,
+            "last_session_category": category,
+            "last_session_duration": String(durationSeconds),
+            "last_session_rating": String(rating),
+            "last_session_completed_at": ISO8601DateFormatter().string(from: Date())
+        ])
+        
+        OneSignal.InAppMessages.addTrigger("event", withValue: "session_completed")
+        OneSignal.InAppMessages.addTriggers([
+            "session_category": category,
+            "session_title": interventionTitle
+        ])
+        
+        let streak = (try? computeCurrentStreak()) ?? 0
+        OneSignal.User.addTags(["streak_count": String(streak)])
+        if streak == 7 || streak == 30 {
+            OneSignal.InAppMessages.addTrigger("streak_milestone", withValue: String(streak))
+        }
+    }
+    
+    private func computeCurrentStreak(referenceDate: Date = Date()) throws -> Int {
+        let context = PersistenceController.shared.container.viewContext
+        let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
+        let cal = Calendar.current
+        let start = cal.date(byAdding: .day, value: -35, to: referenceDate) ?? referenceDate
+        fetch.predicate = NSPredicate(format: "completedAt >= %@ AND completedAt <= %@", start as NSDate, referenceDate as NSDate)
+        fetch.sortDescriptors = [NSSortDescriptor(key: "completedAt", ascending: false)]
+        let results = try context.fetch(fetch)
+        var days = Set<Date>()
+        for item in results { if let d = item.completedAt { days.insert(cal.startOfDay(for: d)) } }
+        var streak = 0
+        var cursor = cal.startOfDay(for: referenceDate)
+        while days.contains(cursor) {
+            streak += 1
+            guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = prev
+        }
+        return streak
     }
     
     private func getActionButtons(for intervention: OneSignaInterventionType) -> [NotificationActionButton] {
@@ -1255,7 +1612,7 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
         }
     }
     
-    // MARK: - Hybrid Notification Methods for App Store
+    // MARK: - Individual Notification Method
     
     /// Send notification to specific user (individual targeting)
     func sendIndividualNotification(_ content: NotificationContent) async {
@@ -1267,48 +1624,46 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener 
             "buttons": content.actionButtons?.map { button in
                 ["id": button.id, "text": button.text]
             } ?? [],
-            "include_player_ids": [OneSignal.User.pushSubscription.id],
-            "filters": [
-                ["field": "tag", "key": "emotion_analysis_enabled", "relation": "=", "value": "true"]
-            ]
+            "include_player_ids": [OneSignal.User.pushSubscription.id]
+            // Note: Removed filters when using include_player_ids to prevent cross-user targeting
         ]
         
         await sendNotificationViaAPI(notificationData)
     }
     
-    /// Send notification to segment (mass targeting)
-    func sendSegmentNotification(_ content: NotificationContent, segment: String) async {
-        let notificationData: [String: Any] = [
-            "app_id": config.appId,
-            "headings": ["en": content.title],
-            "contents": ["en": content.body],
-            "data": content.customData,
-            "buttons": content.actionButtons?.map { button in
-                ["id": button.id, "text": button.text]
-            } ?? [],
-            "included_segments": [segment],
-            "filters": [
-                ["field": "tag", "key": "emotion_analysis_enabled", "relation": "=", "value": "true"]
-            ]
-        ]
-        
-        await sendNotificationViaAPI(notificationData)
-    }
-    
-    /// Send mass campaign to all active users
-    func sendMassCampaign(_ content: NotificationContent) async {
-        await sendSegmentNotification(content, segment: "Active Users")
-    }
-    
-    /// Send notification to pro subscribers
-    func sendProUserNotification(_ content: NotificationContent) async {
-        await sendSegmentNotification(content, segment: "Pro Subscribers")
-    }
-    
-    /// Send notification to free users
-    func sendFreeUserNotification(_ content: NotificationContent) async {
-        await sendSegmentNotification(content, segment: "Free Users")
-    }
+//    /// Send notification to segment (mass targeting)
+//    func sendSegmentNotification(_ content: NotificationContent, segment: String) async {
+//        let notificationData: [String: Any] = [
+//            "app_id": config.appId,
+//            "headings": ["en": content.title],
+//            "contents": ["en": content.body],
+//            "data": content.customData,
+//            "buttons": content.actionButtons?.map { button in
+//                ["id": button.id, "text": button.text]
+//            } ?? [],
+//            "included_segments": [segment],
+//            "filters": [
+//                ["field": "tag", "key": "emotion_analysis_enabled", "relation": "=", "value": "true"]
+//            ]
+//        ]
+//
+//        await sendNotificationViaAPI(notificationData)
+//    }
+//
+//    //  Send mass campaign to all active users
+//    func sendMassCampaign(_ content: NotificationContent) async {
+//        await sendSegmentNotification(content, segment: "Active Users")
+//    }
+//
+//    /// Send notification to pro subscribers
+//    func sendProUserNotification(_ content: NotificationContent) async {
+//        await sendSegmentNotification(content, segment: "Pro Subscribers")
+//    }
+//
+//    /// Send notification to free users
+//    func sendFreeUserNotification(_ content: NotificationContent) async {
+//        await sendSegmentNotification(content, segment: "Free Users")
+//    }
 }
 
 // MARK: - Supporting Models
@@ -1387,9 +1742,236 @@ class NotificationAnalytics: ObservableObject {
 }
 
 // MARK: - Notification Extensions
+// MARK: - Notification History Integration
+
+private func saveNotificationToHistory(_ data: [String: Any]) async {
+    guard let headings = data["headings"] as? [String: String],
+          let contents = data["contents"] as? [String: String],
+          let title = headings["en"],
+          let body = contents["en"] else {
+
+        return
+    }
+    
+    // Determine notification type from data
+    let notificationType = determineNotificationType(from: data)
+    let emotion = extractEmotion(from: data)
+    let intervention = extractIntervention(from: data)
+    let customData = extractCustomData(from: data)
+    let priority = determinePriority(from: data)
+    
+    // Create and save notification to history
+    let historyItem = NotificationHistoryItem(
+        title: title,
+        body: body,
+        type: notificationType,
+        emotion: emotion,
+        intervention: intervention,
+        customData: customData,
+        priority: priority
+    )
+    
+    await NotificationHistoryManager.shared.addNotification(historyItem)
+    
+}
+
+// MARK: - Local Notification History Saving
+private func saveLocalNotificationToHistory(_ notification: UNNotification) async {
+    let content = notification.request.content
+    let userInfo = content.userInfo
+    
+    // Extract notification data
+    let title = content.title
+    let body = content.body
+    let categoryIdentifier = content.categoryIdentifier ?? ""
+    
+    // Determine notification type from category or userInfo
+    let notificationType = determineLocalNotificationType(from: categoryIdentifier, userInfo: userInfo)
+    let emotion = extractEmotionFromUserInfo(userInfo)
+    let intervention = extractInterventionFromUserInfo(userInfo)
+    let customData = extractCustomDataFromUserInfo(userInfo)
+    let priority = determineLocalNotificationPriority(from: categoryIdentifier)
+    
+    // Create and save notification to history
+    let historyItem = NotificationHistoryItem(
+        title: title,
+        body: body,
+        type: notificationType,
+        emotion: emotion,
+        intervention: intervention,
+        customData: customData,
+        priority: priority
+    )
+    
+    await NotificationHistoryManager.shared.addNotification(historyItem)
+    
+}
+
+private func determineLocalNotificationType(from categoryIdentifier: String, userInfo: [AnyHashable: Any]) -> NotificationHistoryType {
+    // Check userInfo first for explicit type
+    if let typeString = userInfo["type"] as? String {
+        switch typeString {
+        case "predictive_intervention":
+            return .predictiveIntervention
+        case "achievement":
+            return .achievement
+        case "goal_completion":
+            return .achievement
+        case "reminder":
+            return .reminder
+        default:
+            break
+        }
+    }
+    
+    // Fallback to category identifier
+    switch categoryIdentifier {
+    case "emotion_checkin":
+        return .predictiveIntervention
+    case "ACHIEVEMENT":
+        return .achievement
+    case "GOAL_COMPLETION":
+        return .achievement
+    case "DAILY_CHECKIN":
+        return .dailyCheckIn
+    default:
+        return .reminder
+    }
+}
+
+private func extractEmotionFromUserInfo(_ userInfo: [AnyHashable: Any]) -> EmotionType? {
+    guard let emotionString = userInfo["emotion"] as? String else { return nil }
+    return EmotionType(rawValue: emotionString)
+}
+
+private func extractInterventionFromUserInfo(_ userInfo: [AnyHashable: Any]) -> OneSignaInterventionType? {
+    guard let interventionString = userInfo["intervention"] as? String else { return nil }
+    return OneSignaInterventionType(rawValue: interventionString)
+}
+
+private func extractCustomDataFromUserInfo(_ userInfo: [AnyHashable: Any]) -> [String: String]? {
+    var customData: [String: String] = [:]
+    
+    for (key, value) in userInfo {
+        if let stringKey = key as? String, let stringValue = value as? String {
+            customData[stringKey] = stringValue
+        }
+    }
+    
+    return customData.isEmpty ? nil : customData
+}
+
+private func determineLocalNotificationPriority(from categoryIdentifier: String) -> NotificationPriority {
+    switch categoryIdentifier {
+    case "ACHIEVEMENT", "GOAL_COMPLETION":
+        return .high
+    case "emotion_checkin":
+        return .high
+    case "DAILY_CHECKIN":
+        return .medium
+    default:
+        return .medium
+    }
+}
+
+private func determineNotificationType(from data: [String: Any]) -> NotificationHistoryType {
+    if let customData = data["data"] as? [String: Any] {
+        if let notificationType = customData["notification_type"] as? String {
+            switch notificationType {
+            case "welcome":
+                return .welcome
+            case "emotion_triggered":
+                return .emotionTriggered
+            case "predictive_intervention":
+                return .predictiveIntervention
+            case "daily_checkin":
+                return .dailyCheckIn
+            case "achievement":
+                return .achievement
+            case "goal_completion":
+                return .achievement
+            default:
+                return .campaign
+            }
+        }
+        
+        if let campaignType = customData["campaign_type"] as? String {
+            switch campaignType {
+            case "emotion_triggered":
+                return .emotionTriggered
+            case "predictive_intervention":
+                return .predictiveIntervention
+            case "daily_checkin":
+                return .dailyCheckIn
+            case "achievement", "goal_completion":
+                return .achievement
+            default:
+                return .campaign
+            }
+        }
+    }
+    
+    // Default fallback based on content
+    if let title = (data["headings"] as? [String: String])?["en"] {
+        if title.contains("Welcome") {
+            return .welcome
+        } else if title.contains("Check-in") || title.contains("Reflection") {
+            return .dailyCheckIn
+        } else if title.contains("Achievement") || title.contains("Goal") {
+            return .achievement
+        }
+    }
+    
+    return .campaign
+}
+
+private func extractEmotion(from data: [String: Any]) -> EmotionType? {
+    if let customData = data["data"] as? [String: Any],
+       let emotionString = customData["emotion"] as? String {
+        return EmotionType(rawValue: emotionString)
+    }
+    return nil
+}
+
+private func extractIntervention(from data: [String: Any]) -> OneSignaInterventionType? {
+    if let customData = data["data"] as? [String: Any],
+       let interventionString = customData["intervention_type"] as? String {
+        return OneSignaInterventionType(rawValue: interventionString)
+    }
+    return nil
+}
+
+private func extractCustomData(from data: [String: Any]) -> [String: String]? {
+    if let customData = data["data"] as? [String: Any] {
+        return customData.compactMapValues { value in
+            if let stringValue = value as? String {
+                return stringValue
+            } else if let numberValue = value as? NSNumber {
+                return numberValue.stringValue
+            }
+            return nil
+        }
+    }
+    return nil
+}
+
+private func determinePriority(from data: [String: Any]) -> NotificationPriority {
+    if let priority = data["priority"] as? String {
+        switch priority {
+        case "high":
+            return .high
+        case "low":
+            return .low
+        default:
+            return .medium
+        }
+    }
+    return .medium
+}
+
+
 extension Notification.Name {
     static let speechAnalysisCompleted = Notification.Name("speechAnalysisCompleted")
     static let deepLinkToIntervention = Notification.Name("deepLinkToIntervention")
 }
-
 

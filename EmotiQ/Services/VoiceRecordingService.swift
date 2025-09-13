@@ -115,13 +115,8 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
             do {
                 try await AudioSessionManager.shared.configureAudioSession(for: .recording)
                 
-                if Config.isDebugMode {
-                    print("🎤 Audio session configured successfully")
-                }
             } catch {
-                if Config.isDebugMode {
-                    print("❌ Failed to setup audio session: \(error)")
-                }
+
             }
         }
     }
@@ -134,18 +129,13 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
                 // Use new iOS 17+ API
                 AVAudioApplication.requestRecordPermission { granted in
                     DispatchQueue.main.async {
-                        if Config.isDebugMode {
-                            print("🎤 Microphone permission: \(granted ? "✅ Granted" : "❌ Denied")")
-                        }
                         
                         if granted {
                             // Request speech recognition permission after microphone permission is granted
                             SFSpeechRecognizer.requestAuthorization { speechStatus in
                                 DispatchQueue.main.async {
                                     let speechGranted = speechStatus == .authorized
-                                    if Config.isDebugMode {
-                                        print("🎤 Speech recognition permission: \(speechGranted ? "✅ Granted" : "❌ Denied")")
-                                    }
+
                                     promise(.success(granted && speechGranted))
                                 }
                             }
@@ -158,18 +148,13 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
                 // Fallback for iOS 16 and earlier
                 self?.audioSession.requestRecordPermission { granted in
                     DispatchQueue.main.async {
-                        if Config.isDebugMode {
-                            print("🎤 Microphone permission: \(granted ? "✅ Granted" : "❌ Denied")")
-                        }
-                        
+                       
                         if granted {
                             // Request speech recognition permission after microphone permission is granted
                             SFSpeechRecognizer.requestAuthorization { speechStatus in
                                 DispatchQueue.main.async {
                                     let speechGranted = speechStatus == .authorized
-                                    if Config.isDebugMode {
-                                        print("🎤 Speech recognition permission: \(speechGranted ? "✅ Granted" : "❌ Denied")")
-                                    }
+
                                     promise(.success(granted && speechGranted))
                                 }
                             }
@@ -244,16 +229,11 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
                 // Start timers
                 self.startTimers()
                 
-                if Config.isDebugMode {
-                    print("🎤 Recording started: \(audioFilename.lastPathComponent)")
-                }
                 
                 promise(.success(()))
                 
             } catch {
-                if Config.isDebugMode {
-                    print("❌ Failed to start recording: \(error)")
-                }
+
                 promise(.failure(.recordingFailed))
             }
         }
@@ -293,9 +273,7 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
             
             // Return recording URL
             if let url = self.currentRecordingURL {
-                if Config.isDebugMode {
-                    print("🎤 Recording stopped: \(String(format: "%.1f", duration))s")
-                }
+
                 promise(.success(url))
             } else {
                 promise(.failure(.fileNotFound))
@@ -318,9 +296,6 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
         
         cleanup()
         
-        if Config.isDebugMode {
-            print("🎤 Recording cancelled")
-        }
     }
     
     // MARK: - Audio Quality Validation
@@ -344,9 +319,7 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
                     let quality = self.analyzeEnhancedAudioQuality(buffer: buffer)
                     
                     DispatchQueue.main.async {
-                        if Config.isDebugMode {
-                            print("🎤 Enhanced audio quality analysis: \(quality.displayName)")
-                        }
+
                         promise(.success(quality))
                     }
                     
@@ -534,9 +507,6 @@ class VoiceRecordingService: NSObject, VoiceRecordingServiceProtocol, Observable
 extension VoiceRecordingService: AVAudioRecorderDelegate {
     
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        if Config.isDebugMode {
-            print("🎤 Recording finished successfully: \(flag)")
-        }
         
         if !flag {
             _isRecording = false
@@ -546,9 +516,7 @@ extension VoiceRecordingService: AVAudioRecorderDelegate {
     }
     
     func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-        if let error = error, Config.isDebugMode {
-            print("❌ Recording encode error: \(error)")
-        }
+
         
         _isRecording = false
         stopTimers()

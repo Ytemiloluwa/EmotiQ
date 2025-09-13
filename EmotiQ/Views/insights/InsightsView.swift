@@ -7,77 +7,70 @@
 
 
 import SwiftUI
-import Charts
-import CoreData
 
-// MARK: - Insights View
-/// Production-ready insights and analytics view with emotion visualization
-/// Provides comprehensive emotional intelligence tracking and trends
 struct InsightsView: View {
     @StateObject private var viewModel = InsightsViewModel()
-    @StateObject private var pdfExportManager = PDFExportManager()
+    @StateObject private var pdfExportManager = ScreenshotPDFExportManager()
     @EnvironmentObject private var subscriptionService: SubscriptionService
     @State private var showingSubscriptionPaywall = false
     @State private var showingShareSheet = false
     @State private var pdfURL: URL?
     @State private var showingSuccessAlert = false
+    @State private var showProToast = false
+    @State private var isExportPressed = false
+    @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
         NavigationView {
             ZStack {
                 // Background gradient
-                LinearGradient(
-                    colors: [Color.purple.opacity(0.05), Color.cyan.opacity(0.05)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                ThemeColors.primaryBackground
                 .ignoresSafeArea()
                 
-                // TODO: Re-enable paywall check when InsightsView is production ready
-                // if subscriptionService.hasActiveSubscription {
-                
-                    // Premium insights content
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // MARK: - Overview Cards
-                            InsightsOverviewSection(viewModel: viewModel)
-                            
-                            // MARK: - Voice Characteristics Analysis
-                            VoiceCharacteristicsSection(viewModel: viewModel)
-                            
-                            // MARK: - Emotion Trends Chart
-                            EmotionTrendsChart(viewModel: viewModel)
-                            
-                            // MARK: - Emotion Distribution
-                            EmotionDistributionChart(viewModel: viewModel)
-                            
-                            // MARK: - Weekly Patterns
-                            WeeklyPatternsChart(viewModel: viewModel)
-                            
-                            // MARK: - Weekly Summary
-                            TodaySummarySection(viewModel: viewModel)
-                            
-                            
-                            Spacer(minLength: 100) // Tab bar spacing
-                        }
-                        .padding(.horizontal)
+                // Premium insights content
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // MARK: - Overview Cards
+                        InsightsOverviewSection(viewModel: viewModel)
+                        
+                        // MARK: - Voice Characteristics Analysis
+                        VoiceCharacteristicsSection(viewModel: viewModel)
+                        
+                        // MARK: - Emotion Trends Chart
+                        EmotionTrendsChart(viewModel: viewModel)
+                        
+                        // MARK: - Emotion Distribution
+                        EmotionDistributionChart(viewModel: viewModel)
+                        
+                        // MARK: - Weekly Patterns
+                        WeeklyPatternsChart(viewModel: viewModel)
+                        
+                        // MARK: - Weekly Summary
+                        TodaySummarySection(viewModel: viewModel)
+                        
+                        
+                        Spacer(minLength: 100) // Tab bar spacing
                     }
+                    .padding(.horizontal)
+                }
                 
-                // TODO: Re-enable premium feature locked state
-                // } else {
-                //     // Premium feature locked state
-                //     PremiumFeatureLockedView {
-                //         showingSubscriptionPaywall = true
-                //     }
-                // }
             }
             .navigationTitle("Insights")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        Task {
-                            await exportToPDF()
+                        if subscriptionService.hasDataExport() {
+                            HapticManager.shared.buttonPress(.primary)
+                            Task {
+                                await exportToPDF()
+                            }
+                        } else {
+                            showProToast = true
+                            // Auto-dismiss toast after 2 seconds
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                showProToast = false
+                            }
                         }
                     }) {
                         HStack(spacing: 4) {
@@ -91,52 +84,95 @@ struct InsightsView: View {
                                 .font(.caption)
                         }
                         .foregroundColor(pdfExportManager.isExporting ? .secondary : .primary)
+                        .scaleEffect(isExportPressed ? 0.96 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isExportPressed)
                     }
-                    .disabled(!subscriptionService.hasDataExport())
+                    .buttonStyle(PlainButtonStyle())
+                    .simultaneousGesture(DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            if !isExportPressed { isExportPressed = true }
+                        }
+                        .onEnded { _ in
+                            isExportPressed = false
+                        }
+                    )
                     .help(subscriptionService.hasDataExport() ? "Export all charts and insights data as a PDF report" : "Upgrade to Pro to export data")
                 }
-            }
-            // TODO: Re-enable subscription paywall sheet when InsightsView is production ready
-            // .sheet(isPresented: $showingSubscriptionPaywall) {
-            //     SubscriptionPaywallView()
-            // }
-            .sheet(isPresented: $showingShareSheet) {
-                if let pdfURL = pdfURL {
-                    ShareSheet(activityItems: [pdfURL])
+            })
+            
+            // Pro Toast Overlay
+            if showProToast {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "crown.fill")
+                            .foregroundColor(.yellow)
+                        Text("This feature is only for Pro users")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.regularMaterial)
+                            .shadow(radius: 8)
+                    )
+                    .padding(.bottom, 100)
                 }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: showProToast)
             }
-            .alert("Export Error", isPresented: .constant(pdfExportManager.exportError != nil)) {
-                Button("OK") {
-                    pdfExportManager.exportError = nil
-                }
-            } message: {
-                if let error = pdfExportManager.exportError {
-                    Text(error)
-                }
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            if let pdfURL = pdfURL {
+                ShareSheet(activityItems: [pdfURL])
             }
-            .alert("Export Successful", isPresented: $showingSuccessAlert) {
-                Button("OK") { }
-            } message: {
-                Text("Your insights report has been exported successfully and is ready to share.")
+        }
+        .alert("Export Error", isPresented: .constant(pdfExportManager.exportError != nil)) {
+            Button("OK") {
+                pdfExportManager.exportError = nil
             }
-            .onAppear {
-                // TODO: Re-enable subscription check when InsightsView is production ready
-                // if subscriptionService.hasActiveSubscription {
-                    viewModel.loadInsightsData()
-                // }
+        } message: {
+            if let error = pdfExportManager.exportError {
+                Text(error)
             }
-            .onChange(of: viewModel.selectedPeriod) {
-                viewModel.refreshData()
-            }
+        }
+        .alert("Export Successful", isPresented: $showingSuccessAlert) {
+            Button("OK") { }
+        } message: {
+            Text("Your insights report has been exported successfully and is ready to share.")
+        }
+        .onAppear {
+            
+            viewModel.loadInsightsData()
+
+        }
+        .onChange(of: viewModel.selectedPeriod) {
+            viewModel.refreshData()
         }
     }
     
     // MARK: - PDF Export Function
+    
     private func exportToPDF() async {
-        guard let exportedURL = await pdfExportManager.exportInsightsToPDF(viewModel: viewModel) else {
-            return
+        await MainActor.run {
+            viewModel.refreshData()
         }
         
+        // Wait for data to be processed and UI to update
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        // Force another refresh to ensure data is current
+        await MainActor.run {
+            viewModel.refreshData()
+        }
+        
+        // Additional wait for data processing
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        
+        guard let exportedURL = await pdfExportManager.exportInsightsToPDF(viewModel: viewModel) else { return }
+    
         await MainActor.run {
             self.pdfURL = exportedURL
             self.showingSuccessAlert = true
@@ -245,12 +281,12 @@ struct FeaturePreviewRow: View {
         }
     }
 }
-
 // MARK: - Preview
 struct InsightsView_Previews: PreviewProvider {
     static var previews: some View {
         InsightsView()
             .environmentObject(SubscriptionService())
+            .environmentObject(ThemeManager())
     }
 }
 

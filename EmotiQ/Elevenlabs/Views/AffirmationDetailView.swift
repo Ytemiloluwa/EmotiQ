@@ -171,7 +171,7 @@ struct AffirmationDetailView: View {
     
     private var audioPlayerSection: some View {
         VStack(spacing: 20) {
-            // Waveform Visualization (Placeholder)
+            // Waveform Visualization
             HStack(spacing: 2) {
                 ForEach(0..<50, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 1)
@@ -182,9 +182,9 @@ struct AffirmationDetailView: View {
                         )
                         .frame(width: 3, height: CGFloat.random(in: 8...32))
                         .animation(
-                            .easeInOut(duration: 0.5)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.02),
+                            isPlaying
+                            ? .easeInOut(duration: 0.5).repeatForever(autoreverses: true).delay(Double(index) * 0.02)
+                            : .easeInOut(duration: 0.3),
                             value: isPlaying
                         )
                 }
@@ -205,9 +205,9 @@ struct AffirmationDetailView: View {
                         .foregroundColor(ThemeColors.secondaryText)
                 }
                 
-//                ProgressView(value: audioPlayer.currentTime, total: audioPlayer.duration)
-//                    .tint(getCategoryColor(affirmation.category))
-//                    .scaleEffect(y: 2)
+                ProgressView(value: audioPlayer.currentTime, total: audioPlayer.duration)
+                    .tint(getCategoryColor(affirmation.category))
+                    .scaleEffect(y: 2)
 
             }
             
@@ -273,11 +273,11 @@ struct AffirmationDetailView: View {
                 
                 // Loop
                 Button {
-                    // Toggle loop functionality
+                    audioPlayer.toggleLoop()
                 } label: {
-                    Image(systemName: "repeat")
+                    Image(systemName: audioPlayer.isLooping ? "repeat.1" : "repeat")
                         .font(.title3)
-                        .foregroundColor(ThemeColors.secondaryText)
+                        .foregroundColor(audioPlayer.isLooping ? getCategoryColor(affirmation.category) : ThemeColors.secondaryText)
                 }
                 .hapticFeedback(.standard)
             }
@@ -473,7 +473,7 @@ struct AffirmationDetailView: View {
                 emotion: affirmation.targetEmotion
             )
         } catch {
-            print("Failed to play affirmation: \(error)")
+        
             HapticManager.shared.notification(.error)
         }
     }

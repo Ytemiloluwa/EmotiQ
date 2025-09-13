@@ -17,7 +17,7 @@ struct GoalSettingView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -34,18 +34,18 @@ struct GoalSettingView: View {
                         GoalCategoriesSection(viewModel: viewModel)
                         
                         // MARK: - Quick Goal Templates
-                        QuickGoalTemplatesSection(viewModel: viewModel)
+                        ///QuickGoalTemplatesSection(viewModel: viewModel)
                         
                         // MARK: - Template Goals (Examples)
-                        if !viewModel.templateGoals.isEmpty {
-                            TemplateGoalsSection(goals: viewModel.templateGoals, viewModel: viewModel)
-                        }
-                        
-                        // MARK: - Progress Overview
-                        if !viewModel.activeGoals.isEmpty {
-                            ProgressOverviewSection(viewModel: viewModel)
-                        }
-                        
+                        //if !viewModel.templateGoals.isEmpty {
+                            //TemplateGoalsSection(goals: viewModel.templateGoals, viewModel: viewModel)
+                        //}
+//                        
+//                        // MARK: - Progress Overview
+//                        if !viewModel.activeGoals.isEmpty {
+//                            ProgressOverviewSection(viewModel: viewModel)
+//                        }
+//                        
                         Spacer(minLength: 100)
                     }
                     .padding(.horizontal)
@@ -218,6 +218,7 @@ struct GoalCard: View {
                 }
             }
             .padding()
+            .contentShape(Rectangle())
             //.themedCard()
         }
         .buttonStyle(PlainButtonStyle())

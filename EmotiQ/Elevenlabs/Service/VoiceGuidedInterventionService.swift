@@ -10,6 +10,7 @@ import AVFoundation
 import Combine
 import UIKit
 import CoreHaptics
+import AVFoundation
 
 // MARK: - Voice Guided Intervention Service
 @MainActor
@@ -21,11 +22,14 @@ class VoiceGuidedInterventionService: ObservableObject {
     @Published var totalSegments = 0
     @Published var playbackProgress: Double = 0.0
     @Published var currentInterventionType: InterventionType?
+    @Published var currentScript: InterventionScript?
     
     private var audioPlayer: AVAudioPlayer?
     private var playbackTimer: Timer?
     private let elevenLabsService = ElevenLabsService.shared
     private var cancellables = Set<AnyCancellable>()
+    private let cacheManager = AudioCacheManager.shared
+    private var inFlight: [String: Task<URL, Error>] = [:]
     
     // Intervention content
     private let interventionScripts = InterventionScripts()
@@ -42,6 +46,8 @@ class VoiceGuidedInterventionService: ObservableObject {
         currentInterventionType = .emotionalPrompt(type)
         
         let script = interventionScripts.getEmotionalPromptScript(type: type, emotion: emotion)
+        currentScript = script
+        Task { await prewarm(script) }
         try await playInterventionScript(script)
     }
     
@@ -53,6 +59,8 @@ class VoiceGuidedInterventionService: ObservableObject {
         currentInterventionType = .breathing(type)
         
         let script = interventionScripts.getBreathingScript(type: type, duration: duration)
+        currentScript = script
+        Task { await prewarm(script) }
         try await playInterventionScript(script)
     }
     
@@ -63,6 +71,8 @@ class VoiceGuidedInterventionService: ObservableObject {
         currentInterventionType = .grounding(type)
         
         let script = interventionScripts.getGroundingScript(type: type)
+        currentScript = script
+        Task { await prewarm(script) }
         try await playInterventionScript(script)
     }
     
@@ -88,39 +98,130 @@ class VoiceGuidedInterventionService: ObservableObject {
         // Session complete
         playbackProgress = 1.0
         currentInterventionType = nil
+        currentScript = nil
         HapticManager.shared.notification(.success)
     }
     
     /// Play individual segment with voice generation
     private func playSegment(_ segment: InterventionSegment) async throws {
         do {
-            // Generate voice audio for the segment - required for interventions
-            let audioURL = try await elevenLabsService.generateSpeech(
-                text: segment.text,
-                emotion: segment.emotion,
-                speed: segment.speed,
-                stability: segment.stability
-            )
+            // Get the user's voice profile ID
+            let userVoiceId = elevenLabsService.userVoiceProfile?.id
             
-            // Play the audio
-            try await playAudio(from: audioURL)
+            guard let finalVoiceId = userVoiceId else {
+
+                throw ElevenLabsError.noVoiceProfile
+            }
+            
+            
+            // First check cache - if found, play immediately (zero credits)
+            if let cachedURL = await cacheManager.getCachedAudio(for: segment.text, emotion: segment.emotion, voiceId: finalVoiceId) {
+
+                try await playAudio(from: cachedURL)
+                return
+            }
+            
+            // Generate cache key for in-flight tracking
+            let cacheKey = "\(segment.text)_\(segment.emotion.rawValue)_\(finalVoiceId)"
+            
+            // Check if already generating this audio (prevent duplicate requests)
+            if let task = inFlight[cacheKey] {
+
+                let url = try await task.value
+   
+                try await playAudio(from: url)
+                return
+            }
+            
+            // Generate new audio and cache it
+            let task = Task<URL, Error> { [weak self] in
+                guard let self = self else { throw VoiceGuidedInterventionError.invalidScript }
+                let audioData = try await self.elevenLabsService.generateSpeech(
+                    text: segment.text,
+                    voiceId: finalVoiceId,
+                    emotion: segment.emotion,
+                    settings: ElevenLabsViewModel.VoiceSettings(
+                        stability: segment.stability,
+                        similarityBoost: 0.8,
+                        style: 0.2,
+                        useSpeakerBoost: true
+                    )
+                )
+                let cachedURL = try await self.cacheManager.cacheAudio(data: audioData, text: segment.text, emotion: segment.emotion, voiceId: finalVoiceId)
+     
+                return cachedURL
+            }
+            inFlight[cacheKey] = task
+            defer { inFlight.removeValue(forKey: cacheKey) }
+            let url = try await task.value
+            
+            try await playAudio(from: url)
             
         } catch ElevenLabsError.noVoiceProfile {
-            // User needs to set up voice cloning - log for debugging
-            if Config.isDebugMode {
-                print("🔧 Voice profile required for intervention segment: \(segment.text)")
-                print("💡 User needs to set up voice cloning in Coaching section")
-            }
+
             throw ElevenLabsError.noVoiceProfile
             
         } catch {
-            // Other errors - log for debugging
-            if Config.isDebugMode {
-                print("⚠️ Voice generation failed for intervention segment: \(segment.text)")
-                print("❌ Error: \(error)")
-            }
+
             throw error
         }
+    }
+
+    // MARK: - Prewarm Cache
+    private func prewarm(_ script: InterventionScript) async {
+
+        var cachedCount = 0
+        var generatedCount = 0
+        
+        // Get the user's voice profile ID
+        let userVoiceId = elevenLabsService.userVoiceProfile?.id
+        
+        guard let finalVoiceId = userVoiceId else {
+            return
+        }
+        
+        for (index, segment) in script.segments.enumerated() {
+
+            // Skip if already cached
+            if await cacheManager.getCachedAudio(for: segment.text, emotion: segment.emotion, voiceId: finalVoiceId) != nil {
+                cachedCount += 1
+
+                continue
+            }
+            
+            // Generate cache key for in-flight tracking
+            let cacheKey = "\(segment.text)_\(segment.emotion.rawValue)_\(finalVoiceId)"
+            
+            // Skip if already generating
+            if inFlight[cacheKey] != nil {
+                continue
+            }
+            
+            // Generate and cache audio
+
+            let task = Task<URL, Error> { [weak self] in
+                guard let self = self else { throw VoiceGuidedInterventionError.invalidScript }
+                let audioData = try await self.elevenLabsService.generateSpeech(
+                    text: segment.text,
+                    voiceId: finalVoiceId,
+                    emotion: segment.emotion,
+                    settings: ElevenLabsViewModel.VoiceSettings(
+                        stability: segment.stability,
+                        similarityBoost: 0.8,
+                        style: 0.2,
+                        useSpeakerBoost: true
+                    )
+                )
+                let cachedURL = try await self.cacheManager.cacheAudio(data: audioData, text: segment.text, emotion: segment.emotion, voiceId: finalVoiceId)
+                return cachedURL
+            }
+            inFlight[cacheKey] = task
+            _ = try? await task.value
+            inFlight.removeValue(forKey: cacheKey)
+            generatedCount += 1
+    
+        }
+        
     }
     
     /// Play audio from URL
@@ -147,6 +248,7 @@ class VoiceGuidedInterventionService: ObservableObject {
             }
         }
     }
+
     
     /// Pause current playback
     func pause() {
@@ -183,6 +285,49 @@ class VoiceGuidedInterventionService: ObservableObject {
             currentSegment -= 1
             audioPlayer?.stop()
         }
+    }
+    
+    // MARK: - Public API for VoiceGuidedInterventionView
+    
+    /// Play a single segment with caching (used by VoiceGuidedInterventionView)
+    func playSegment(text: String, emotion: EmotionType) async throws {
+
+        let segment = InterventionSegment(
+            text: text,
+            emotion: .neutral, // Use .neutral to match prewarm cache
+            speed: 0.8,
+            stability: 0.9,
+            pauseDuration: 0.0,
+            hapticFeedback: nil
+        )
+        try await playSegment(segment)
+    }
+    
+    /// Prewarm cache for a VoiceGuidedIntervention (used by VoiceGuidedInterventionView)
+    func prewarmCache(for intervention: VoiceGuidedIntervention) async throws {
+
+        
+        // Convert VoiceGuidedIntervention to InterventionScript for prewarming
+        let segments = intervention.voicePrompts.map { prompt in
+            InterventionSegment(
+                text: prompt.text,
+                emotion: .neutral,
+                speed: 0.8,
+                stability: 0.9,
+                pauseDuration: 0.0,
+                hapticFeedback: nil
+            )
+        }
+        
+        let script = InterventionScript(
+            title: intervention.title,
+            description: intervention.description,
+            estimatedDuration: TimeInterval(intervention.estimatedDuration * 60),
+            segments: segments
+        )
+        
+        await prewarm(script)
+
     }
 }
 
@@ -1214,6 +1359,36 @@ class InterventionScripts {
         )
     }
 }
+
+// MARK: - TTS Cache Utilities
+final class TTSAudioCache {
+    static let shared = TTSAudioCache()
+    private init() {}
+    private let fm = FileManager.default
+    private var cacheDir: URL {
+        let url = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("tts-cache")
+        if !fm.fileExists(atPath: url.path) {
+            try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        return url
+    }
+    func keyFor(text: String, emotion: String, speed: Double, stability: Double) -> String {
+        let base = "\(emotion)|\(String(format: "%.2f", speed))|\(String(format: "%.2f", stability))|" + text
+        return String(base.hashValue)
+    }
+    func path(for key: String) -> URL { cacheDir.appendingPathComponent(key + ".m4a") }
+    func cachedURL(for key: String) -> URL? {
+        let url = path(for: key)
+        return fm.fileExists(atPath: url.path) ? url : nil
+    }
+    func storeToCache(sourceURL: URL, key: String) throws -> URL {
+        let dest = path(for: key)
+        if fm.fileExists(atPath: dest.path) { return dest }
+        try fm.copyItem(at: sourceURL, to: dest)
+        return dest
+    }
+}
+
 
 // MARK: - Audio Player Delegate
 

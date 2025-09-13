@@ -64,42 +64,36 @@ class AudioSessionManager: ObservableObject {
     
     /// Configures audio session for a specific purpose with conflict prevention
     func configureAudioSession(for configuration: AudioSessionConfiguration) async throws {
-        print("🔍 DEBUG: AudioSessionManager.configureAudioSession() called for: \(configuration)")
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 do {
                     // Check if we need to reconfigure
                     let currentConfig = self.currentConfiguration
-                    print("🔍 DEBUG: Current audio session config: \(currentConfig?.description ?? "nil")")
+                    
                     if currentConfig == configuration {
-                        print("🔍 DEBUG: Audio session already configured for \(configuration), skipping reconfiguration")
                         continuation.resume()
                         return
                     }
                     
                     // Deactivate current session first
-                    print("🔍 DEBUG: Deactivating current audio session...")
+        
                     try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-                    print("🔍 DEBUG: Audio session deactivated")
+             
                     
                     // Configure for new purpose
-                    print("🔍 DEBUG: Setting audio session category: \(configuration.category)")
+                   
                     try self.audioSession.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
-                    print("🔍 DEBUG: Audio session category set successfully")
-                    
-                    print("🔍 DEBUG: Activating audio session...")
+
                     try self.audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-                    print("🔍 DEBUG: Audio session activated")
+             
                     
                     // Update current configuration
                     self.currentConfiguration = configuration
                     
-                    print("✅ Audio session configured for: \(configuration)")
                     continuation.resume()
                     
                 } catch {
-                    print("❌ Failed to configure audio session for \(configuration): \(error)")
-                    print("🔍 DEBUG: Audio session error type: \(type(of: error))")
+
                     continuation.resume(throwing: error)
                 }
             }
@@ -116,10 +110,10 @@ class AudioSessionManager: ObservableObject {
                     // Update current configuration
                     self.currentConfiguration = nil
                     
-                    print("✅ Audio session deactivated")
+         
                     continuation.resume()
                 } catch {
-                    print("❌ Failed to deactivate audio session: \(error)")
+                 
                     continuation.resume(throwing: error)
                 }
             }
@@ -160,9 +154,9 @@ class AudioSessionManager: ObservableObject {
         
         switch type {
         case .began:
-            print("🔇 Audio session interruption began")
+            break
         case .ended:
-            print("🔊 Audio session interruption ended")
+            break
         @unknown default:
             break
         }
@@ -175,7 +169,6 @@ class AudioSessionManager: ObservableObject {
             return
         }
         
-        print("🎧 Audio route changed: \(reason)")
     }
 }
 

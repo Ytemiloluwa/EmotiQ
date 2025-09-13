@@ -5,9 +5,6 @@
 //  Created by Temiloluwa on 25-08-2025.
 //
 
-//  Production-ready OneSignal notification manager with emotion-triggered campaigns and haptic integration
-//
-
 import Foundation
 import OneSignalFramework
 import UserNotifications
@@ -32,11 +29,15 @@ class OneSignalNotificationManager: ObservableObject {
     // MARK: - Private Properties
     private let oneSignalService = OneSignalService.shared
     private let behaviorAnalyzer = UserBehaviorAnalyzer()
-    private var hasTriggeredWelcomeNotification = false
+    private var hasTriggeredWelcomeNotification: Bool {
+        get { UserDefaults.standard.bool(forKey: "hasTriggeredWelcomeNotification") }
+        set { UserDefaults.standard.set(newValue, forKey: "hasTriggeredWelcomeNotification") }
+    }
     private let interventionPredictor = EmotionalInterventionPredictor()
     private let notificationScheduler = SmartNotificationScheduler()
     private let hapticManager = HapticManager.shared
     private var cancellables = Set<AnyCancellable>()
+    private var subscriptionMonitorTimer: AnyCancellable?
     
     // Campaign management
     private var emotionTriggeredCampaigns: [String: NotificationCampaign] = [:]
@@ -48,8 +49,7 @@ class OneSignalNotificationManager: ObservableObject {
     private struct config {
         static let appid = Config.oneSignalAppID
         static let maxActiveCampaigns = 10
-        static let campaignCooldownPeriod: TimeInterval = 3600 // 1 hour
-        static let maxDailyCampaigns = 5
+        // Removed notification limits - no campaign cooldown or daily limits
         static let emergencyInterventionThreshold: Double = 0.9
         static let highConfidenceThreshold: Double = 0.8
         static let mediumConfidenceThreshold: Double = 0.6
@@ -66,15 +66,15 @@ class OneSignalNotificationManager: ObservableObject {
     
     // MARK: - Permission Management
     private func checkNotificationPermissionOnLaunch() {
-        print("🔍 DEBUG: Checking notification permission on launch")
+   
         
         // Don't show dialog immediately on fresh installs
         // Let the subscription state monitoring handle permission detection
-        print("🔍 DEBUG: Skipping immediate permission check, will monitor OneSignal state instead")
+        
     }
     
     private func performDelayedPermissionCheck() {
-        print("🔍 DEBUG: Performing delayed permission check")
+
         
         // Force sync permission status
         oneSignalService.forceSyncPermissionStatus()
@@ -84,9 +84,6 @@ class OneSignalNotificationManager: ObservableObject {
         let subscriptionId = OneSignal.User.pushSubscription.id
         let optedIn = OneSignal.User.pushSubscription.optedIn
         
-        print("🔍 DEBUG: Delayed check - OneSignal permission: \(currentStatus)")
-        print("🔍 DEBUG: Delayed check - Subscription ID: \(subscriptionId)")
-        print("🔍 DEBUG: Delayed check - Opted In: \(optedIn)")
         
         // Update our published property - OneSignal returns true for authorized, false for denied
         notificationPermissionGranted = currentStatus
@@ -94,13 +91,13 @@ class OneSignalNotificationManager: ObservableObject {
         // Only show alert if permission is actually denied AND OneSignal is ready
         // This prevents showing the dialog on fresh installs before OneSignal is ready
         if oneSignalService.isFreshInstall() || (!currentStatus && !optedIn) {
-            print("🔍 DEBUG: Fresh install or OneSignal not ready yet (permission: \(currentStatus), optedIn: \(optedIn)), skipping alert")
+
             // Don't show alert on fresh installs until OneSignal is fully initialized
         } else if !currentStatus {
-            //print("🔍 DEBUG: Permission denied after initialization, showing settings alert")
+            
             showingNotificationSettingsAlert = true
         } else {
-            //print("🔍 DEBUG: Permission granted, hiding settings alert")
+       
             showingNotificationSettingsAlert = false
         }
         
@@ -111,19 +108,19 @@ class OneSignalNotificationManager: ObservableObject {
     }
     
     private func refreshOneSignalSubscription() {
-        print("🔍 DEBUG: Refreshing OneSignal subscription status")
+    
         
         // Force OneSignal to re-evaluate permission and subscription
         OneSignal.Notifications.clearAll()
         
         // Re-request permission to ensure subscription is properly enabled
         OneSignal.Notifications.requestPermission({ accepted in
-            print("🔍 DEBUG: Refresh permission result: \(accepted)")
+
             Task { @MainActor in
                 self.notificationPermissionGranted = accepted
                 if accepted {
                     self.showingNotificationSettingsAlert = false
-                    print("🔍 DEBUG: Subscription refreshed successfully")
+                    
                 }
             }
         }, fallbackToSettings: false)
@@ -132,7 +129,7 @@ class OneSignalNotificationManager: ObservableObject {
     // MARK: - Public Methods
     
     func dismissSettingsAlert() {
-        print("🔍 DEBUG: Manually dismissing settings alert")
+    
         showingNotificationSettingsAlert = false
     }
     
@@ -140,11 +137,6 @@ class OneSignalNotificationManager: ObservableObject {
         let oneSignalPermission = OneSignal.Notifications.permission
         let servicePermission = oneSignalService.notificationPermissionStatus
         
-        print("🔍 DEBUG: Current Permission Status:")
-        print("  - OneSignal.Notifications.permission: \(oneSignalPermission)")
-        print("  - OneSignalService.notificationPermissionStatus: \(servicePermission)")
-        print("  - notificationPermissionGranted: \(notificationPermissionGranted)")
-        print("  - showingNotificationSettingsAlert: \(showingNotificationSettingsAlert)")
     }
     
     // MARK: - OneSignal Integration Setup
@@ -167,22 +159,27 @@ class OneSignalNotificationManager: ObservableObject {
                 let isGranted = (status == .authorized)
                 self?.notificationPermissionGranted = isGranted
                 
-                //print("🔍 DEBUG: Permission status changed to: \(status)")
+            
                 
                 // Only show settings alert if OneSignal is ready but permission is denied
                 let subscriptionId = OneSignal.User.pushSubscription.id
                 let optedIn = OneSignal.User.pushSubscription.optedIn
                 
                 if isGranted {
-                    //print("🔍 DEBUG: Permission granted, hiding settings alert")
+          
                     self?.showingNotificationSettingsAlert = false
                 } else if !(subscriptionId?.isEmpty ?? true) && !optedIn {
                     // OneSignal is ready but user hasn't opted in
-                    print("🔍 DEBUG: OneSignal ready but user not opted in, showing settings alert")
-                    self?.showingNotificationSettingsAlert = true
+                    
+                    // Add a small delay to prevent alert conflicts
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if !(self?.showingNotificationSettingsAlert ?? false) {
+                            self?.showingNotificationSettingsAlert = true
+                        }
+                    }
                 } else {
                     // OneSignal not ready yet, don't show alert
-                    print("🔍 DEBUG: OneSignal not ready yet (subscriptionId: \(subscriptionId), optedIn: \(optedIn)), skipping alert")
+
                 }
             }
             .store(in: &cancellables)
@@ -206,7 +203,7 @@ class OneSignalNotificationManager: ObservableObject {
             .store(in: &cancellables)
         
         // Monitor OneSignal subscription status changes (reduced frequency to prevent duplicates)
-        Timer.publish(every: 5.0, on: .main, in: .common)
+        subscriptionMonitorTimer = Timer.publish(every: 5.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 let optedIn = OneSignal.User.pushSubscription.optedIn
@@ -223,32 +220,32 @@ class OneSignalNotificationManager: ObservableObject {
                         
                         // Trigger user setup and welcome notification only once
                         if !(self?.hasTriggeredWelcomeNotification ?? false) {
-                            self?.hasTriggeredWelcomeNotification = true
+               
                             self?.oneSignalService.setupUserTags()
                             self?.oneSignalService.scheduleInitialWelcomeNotification()
+                        } else {
+                            // Stop the timer once welcome notification is sent
+                 
+                            self?.subscriptionMonitorTimer?.cancel()
+                            self?.subscriptionMonitorTimer = nil
                         }
                     }
                 } else if !(subscriptionId?.isEmpty ?? true) && !optedIn {
                     // OneSignal is ready but user hasn't opted in - show settings alert
-                    DispatchQueue.main.async {
-                        self?.showingNotificationSettingsAlert = true
+                    // Add a small delay to prevent alert conflicts
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        if !(self?.showingNotificationSettingsAlert ?? false) {
+                            self?.showingNotificationSettingsAlert = true
+                        }
                     }
                     
                 }
             }
-            .store(in: &cancellables)
     }
     
     private func setupEmotionObservers() {
-        // Observe emotion analysis results for immediate campaigns
-        NotificationCenter.default.publisher(for: .emotionalDataSaved)
-            .compactMap { $0.object as? EmotionAnalysisResult }
-            .sink { [weak self] result in
-                Task { @MainActor in
-                    await self?.processEmotionForCampaigns(result)
-                }
-            }
-            .store(in: &cancellables)
+        // Note: Emotion analysis results are now handled by OneSignalService
+        // to prevent duplicate processing. This method is kept for other observers only.
         
         // Observe intervention completions for follow-up campaigns
         NotificationCenter.default.publisher(for: .notificationInterventionCompleted)
@@ -303,7 +300,7 @@ class OneSignalNotificationManager: ObservableObject {
     private func initializeCampaignSystem() async {
         // Prevent multiple initializations
         guard !hasInitializedCampaigns else {
-            print("🔍 Campaign system already initialized, skipping...")
+           
             return
         }
         
@@ -320,8 +317,7 @@ class OneSignalNotificationManager: ObservableObject {
         
         // Set up re-engagement campaigns
         await setupReEngagementCampaigns()
-        
-        print("✅ OneSignal campaign system initialized")
+    
     }
     
     private func setupUserSegmentation() async {
@@ -379,7 +375,7 @@ class OneSignalNotificationManager: ObservableObject {
         )
     }
     
-    private func processEmotionForCampaigns(_ result: EmotionAnalysisResult) async {
+    func processEmotionForCampaigns(_ result: EmotionAnalysisResult) async {
         // Check if emotion requires immediate intervention
         if shouldTriggerImmediateCampaign(for: result) {
             await triggerImmediateEmotionCampaign(result)
@@ -393,19 +389,11 @@ class OneSignalNotificationManager: ObservableObject {
     }
     
     private func shouldTriggerImmediateCampaign(for result: EmotionAnalysisResult) -> Bool {
-        // High-confidence negative emotions or emergency situations
-        let emergencyEmotions: Set<EmotionType> = [.anger, .fear, .sadness]
+        // Trigger notifications for all emotions regardless of confidence
+        // This ensures users get support whenever they record their voice
+        let supportedEmotions: Set<EmotionType> = [.anger, .fear, .sadness, .joy, .disgust, .surprise]
         
-        if emergencyEmotions.contains(convertEmotionCategoryToType(result.primaryEmotion)) {
-            return result.confidence >= config.emergencyInterventionThreshold
-        }
-        
-        // High-confidence positive emotions for amplification
-        if result.primaryEmotion == .joy {
-            return result.confidence >= config.highConfidenceThreshold
-        }
-        
-        return false
+        return supportedEmotions.contains(convertEmotionCategoryToType(result.primaryEmotion))
     }
     
     private func triggerImmediateEmotionCampaign(_ result: EmotionAnalysisResult) async {
@@ -436,7 +424,6 @@ class OneSignalNotificationManager: ObservableObject {
         campaign.analytics.incrementCampaignsTriggered()
         campaign.lastTriggered = Date()
         
-        print("🚀 Triggered immediate emotion campaign for \(result.primaryEmotion.displayName)")
     }
     
     // MARK: - Predictive Campaigns
@@ -511,10 +498,10 @@ class OneSignalNotificationManager: ObservableObject {
             createdAt: Date()
         )
         
-        await notificationScheduler.schedulePredictiveIntervention(prediction: prediction)
+        // Note: Predictive notifications are now handled by OneSignalService
+        // to prevent duplicate scheduling. Only campaign tracking remains here.
         activeCampaigns.append(campaign)
         
-        print("📅 Scheduled predictive intervention for \(prediction.predictedEmotion.displayName) at \(prediction.optimalTime)")
     }
     
     // MARK: - Achievement Campaigns
@@ -528,7 +515,7 @@ class OneSignalNotificationManager: ObservableObject {
             triggers: [],
             segmentation: [:],
             schedule: CampaignSchedule(
-                scheduledTime: Date().addingTimeInterval(300), // 5 minutes delay
+                scheduledTime: Date().addingTimeInterval(20), // 20 minutes delay
                 repeatInterval: nil,
                 timeZone: TimeZone.current
             ),
@@ -545,7 +532,6 @@ class OneSignalNotificationManager: ObservableObject {
         // Trigger celebration haptic immediately
         hapticManager.celebration(.goalCompleted)
         
-        print("🎉 Created achievement celebration campaign for: \(achievement.title)")
     }
     
     // MARK: - Goal Completion Campaigns
@@ -559,7 +545,7 @@ class OneSignalNotificationManager: ObservableObject {
             triggers: [],
             segmentation: [:],
             schedule: CampaignSchedule(
-                scheduledTime: Date().addingTimeInterval(30), // 30 seconds delay
+                scheduledTime: Date().addingTimeInterval(7), // 7 seconds delay
                 repeatInterval: nil,
                 timeZone: TimeZone.current
             ),
@@ -576,10 +562,6 @@ class OneSignalNotificationManager: ObservableObject {
         // Trigger celebration haptic immediately
         hapticManager.celebration(.goalCompleted)
         
-        print("🎯 Created goal completion celebration campaign for: \(goal.title ?? "Unknown Goal")")
-        print("🔍 DEBUG: Goal completion notification will be sent in 30 seconds")
-        print("🔍 DEBUG: Goal ID: \(goal.id?.uuidString ?? "Unknown")")
-        print("🔍 DEBUG: Goal Category: \(goal.category ?? "Unknown")")
     }
     
     // MARK: - Daily Check-in Campaigns
@@ -626,9 +608,8 @@ class OneSignalNotificationManager: ObservableObject {
         )
         
         activeCampaigns.append(campaign)
-        await notificationScheduler.scheduleDailyCheckIn()
         
-        print("📅 Set up daily check-in campaign for \(optimalTime)")
+        
     }
     
     // MARK: - Re-engagement Campaigns
@@ -653,7 +634,7 @@ class OneSignalNotificationManager: ObservableObject {
         )
         
         activeCampaigns.append(reEngagementCampaign)
-        print("🔄 Set up re-engagement campaign")
+    
     }
     
     private func getRichMediaForEmotion(_ emotion: EmotionType) -> CampaignRichMedia? {
@@ -896,7 +877,7 @@ class OneSignalNotificationManager: ObservableObject {
             },
             "include_player_ids": [OneSignal.User.pushSubscription.id],
             "send_after": delay > 0 ? ISO8601DateFormatter().string(from: Date().addingTimeInterval(delay)) : nil,
-            "filters": createCampaignFilters(campaign: campaign),
+            // Note: Removed filters when using include_player_ids to prevent cross-user targeting
             "priority": priority.stringValue
         ].compactMapValues { $0 }
         
@@ -920,7 +901,6 @@ class OneSignalNotificationManager: ObservableObject {
         campaign.analytics.notificationsSent += 1
         campaignAnalytics.totalNotificationsSent += 1
         
-        print("📤 Sent campaign notification: \(content.title)")
     }
     
     // MARK: - Campaign Optimization
@@ -937,7 +917,6 @@ class OneSignalNotificationManager: ObservableObject {
         // Pause underperforming campaigns
         await pauseUnderperformingCampaigns(basedOn: performanceData)
         
-        print("🔧 Campaign optimization completed")
     }
     
     private func analyzeCampaignPerformance() async -> CampaignPerformanceData {
@@ -1038,7 +1017,7 @@ class OneSignalNotificationManager: ObservableObject {
         guard let lastTriggered = campaign.lastTriggered else { return false }
         
         let timeSinceLastTrigger = Date().timeIntervalSince(lastTriggered)
-        return timeSinceLastTrigger < config.campaignCooldownPeriod
+        return false
     }
     
     private func personalizeContent(
@@ -1115,7 +1094,6 @@ class OneSignalNotificationManager: ObservableObject {
             campaign.createdAt >= oneDayAgo
         }
         
-        print("🧹 Cleaned up expired campaigns")
     }
     
     private func trackEmotionForOptimization(_ result: EmotionAnalysisResult) async {
@@ -1294,7 +1272,7 @@ class OneSignalNotificationManager: ObservableObject {
                 if metrics.engagementRate < 0.1 && metrics.totalSent > 10 {
                     // Very low engagement with sufficient data, pause campaign
                     campaign.isActive = false
-                    print("⏸️ Paused underperforming campaign: \(campaign.name)")
+        
                 }
             }
         }
@@ -1341,12 +1319,12 @@ class OneSignalNotificationManager: ObservableObject {
     
     private func adjustCampaignTiming(_ campaign: NotificationCampaign) async {
         // Implement timing adjustment logic based on user behavior
-        print("🔧 Adjusting timing for campaign: \(campaign.name)")
+   
     }
     
     private func adjustCampaignContent(_ campaign: NotificationCampaign) async {
         // Implement content adjustment logic based on performance
-        print("✏️ Adjusting content for campaign: \(campaign.name)")
+        
     }
     
     func convertEmotionCategoryToType(_ category: EmotionCategory) -> EmotionType {

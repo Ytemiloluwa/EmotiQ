@@ -5,38 +5,41 @@
 //  Created by Temiloluwa on 06-09-2025.
 //
 
+
 import Foundation
 import SwiftUI
+import CoreData
 
 struct VoiceGuidedInterventionView: View {
     let intervention: VoiceGuidedIntervention?
     
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
     @EnvironmentObject private var themeManager: ThemeManager
-    @StateObject private var audioPlayer = CachedAudioPlayer()
     @StateObject private var interventionService = VoiceGuidedInterventionService.shared
     
     @State private var selectedTab: InterventionTab = .breathingExercises
     @State private var selectedIntervention: VoiceGuidedIntervention?
     @State private var currentStep = 0
-    @State private var isPlaying = false
     @State private var showingCompletion = false
     @State private var effectivenessRating = 0
     @State private var sessionStartTime = Date()
     @State private var breathingPhase: BreathingPhase = .inhale
     @State private var breathingTimer: Timer?
     @State private var breathingProgress: Double = 0
+    @State private var showingVoiceSetup = false
+    @State private var phaseScheduled = false
     
     enum InterventionTab: String, CaseIterable {
         case breathingExercises = "Breathing"
         case emotionalPrompts = "Emotional"
-        case quickRelief = "Quick Relief"
+        // case quickRelief = "Quick Relief" // Commented out to reduce ElevenLabs credit consumption
         
         var displayName: String {
             switch self {
             case .breathingExercises: return "Breathing"
             case .emotionalPrompts: return "Emotional"
-            case .quickRelief: return "Quick Relief"
+            // case .quickRelief: return "Quick Relief" // Commented out
             }
         }
         
@@ -44,7 +47,7 @@ struct VoiceGuidedInterventionView: View {
             switch self {
             case .breathingExercises: return VoiceGuidedIntervention.breathingExercises
             case .emotionalPrompts: return VoiceGuidedIntervention.emotionalPrompts
-            case .quickRelief: return VoiceGuidedIntervention.quickRelief
+            // case .quickRelief: return VoiceGuidedIntervention.quickRelief // Commented out
             }
         }
     }
@@ -70,12 +73,22 @@ struct VoiceGuidedInterventionView: View {
             }
         }
     }
+
+    private var selectedBreathingType: BreathingExerciseType? {
+        guard let title = selectedIntervention?.title.lowercased(), selectedIntervention?.category == .breathing else { return nil }
+        if title.contains("4-7-8") { return .fourSevenEight }
+        if title.contains("box") { return .boxBreathing }
+        if title.contains("equal") { return .equalBreathing }
+        if title.contains("coherent") { return .coherentBreathing }
+        if title.contains("bellows") { return .bellowsBreath }
+        return .boxBreathing
+    }
     
     var body: some View {
         NavigationStack {
             ZStack {
                 // Background
-                ThemeColors.backgroundGradient
+                ThemeColors.primaryBackground
                 .ignoresSafeArea()
                 
                 if let selectedIntervention = selectedIntervention {
@@ -94,10 +107,9 @@ struct VoiceGuidedInterventionView: View {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button {
                             selectedIntervention = nil
-                            audioPlayer.stop()
+                            interventionService.stop()
                             stopBreathingTimer()
                             currentStep = 0
-                            isPlaying = false
                             effectivenessRating = 0
                         } label: {
                             HStack(spacing: 4) {
@@ -118,6 +130,9 @@ struct VoiceGuidedInterventionView: View {
                         onComplete: completeIntervention
                     )
                 }
+            }
+            .navigationDestination(isPresented: $showingVoiceSetup) {
+                VoiceCloningSetupView()
             }
             .onAppear {
                 if let providedIntervention = intervention {
@@ -180,7 +195,7 @@ struct VoiceGuidedInterventionView: View {
         }
         .padding(.bottom, 8)
         .background(
-            ThemeColors.backgroundGradient
+            ThemeColors.primaryBackground
                 .ignoresSafeArea(.all, edges: .top)
         )
     }
@@ -198,7 +213,11 @@ struct VoiceGuidedInterventionView: View {
                 
                 // Main Content
                 if intervention.category == .breathing {
-                    breathingVisualization
+                    if selectedBreathingType == .boxBreathing {
+                        squareBreathingVisualization
+                    } else {
+                        breathingVisualization
+                    }
                 } else {
                     contentSection(for: intervention)
                 }
@@ -372,29 +391,115 @@ struct VoiceGuidedInterventionView: View {
                 .shadow(color: .black.opacity(0.1), radius: 15, x: 0, y: 8)
         )
     }
+
+    // MARK: - Square Breathing Visualization (Box Breathing)
+    private var squareBreathingVisualization: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(breathingPhase.color.opacity(0.4), lineWidth: 4)
+                    .frame(width: 220, height: 220)
+                // Moving dot along the square path, synced with phase/progress
+                GeometryReader { geo in
+                    let size = min(geo.size.width, geo.size.height)
+                    let inset: CGFloat = 12
+                    let side = size - inset * 2
+                    let pos = dotPosition(side: side, inset: inset)
+                    Circle()
+                        .fill(breathingPhase.color)
+                        .frame(width: 14, height: 14)
+                        .position(x: pos.x + inset, y: pos.y + inset)
+                }
+                .frame(width: 220, height: 220)
+                
+                VStack(spacing: 6) {
+                    Text(labelForPhase())
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(ThemeColors.primaryText)
+                    Text("\(Int(ceil(getBreathingDuration() * (phaseScheduled ? 0 : 1))))s")
+                        .font(.caption)
+                        .foregroundColor(ThemeColors.secondaryText)
+                }
+            }
+            
+            HStack(spacing: 16) {
+                phaseChip("Inhale", .inhale)
+                phaseChip("Hold", .hold)
+                phaseChip("Exhale", .exhale)
+                phaseChip("Hold", .pause)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(ThemeColors.secondaryBackground)
+                .shadow(color: .black.opacity(0.1), radius: 15, x: 0, y: 8)
+        )
+    }
+    
+    private func phaseChip(_ text: String, _ phase: BreathingPhase) -> some View {
+        Text(text)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(breathingPhase == phase ? breathingPhase.color.opacity(0.2) : ThemeColors.secondaryBackground)
+            .foregroundColor(breathingPhase == phase ? breathingPhase.color : ThemeColors.primaryText)
+            .clipShape(Capsule())
+    }
+    
+    private func labelForPhase() -> String {
+        switch breathingPhase {
+        case .inhale: return "Inhale"
+        case .hold: return "Hold"
+        case .exhale: return "Exhale"
+        case .pause: return "Hold"
+        }
+    }
+    
+    private func dotPosition(side: CGFloat, inset: CGFloat) -> CGPoint {
+        // Map phase and progress [0..1] to square perimeter coordinates
+        let p = max(0, min(1, breathingProgress))
+        switch breathingPhase {
+        case .inhale:
+            // Bottom-left to top-left
+            return CGPoint(x: 0, y: side - side * p)
+        case .hold:
+            // Top-left to top-right
+            return CGPoint(x: side * p, y: 0)
+        case .exhale:
+            // Top-right to bottom-right
+            return CGPoint(x: side, y: side * p)
+        case .pause:
+            // Bottom-right to bottom-left
+            return CGPoint(x: side - side * p, y: side)
+        }
+    }
     
     // MARK: - Audio Controls Section
     
     private var audioControlsSection: some View {
         VStack(spacing: 16) {
             // Waveform Visualization
-                                HStack(spacing: 2) {
-                        ForEach(0..<30, id: \.self) { index in
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(
-                                    isPlaying
-                                    ? (selectedIntervention != nil ? getInterventionColor(selectedIntervention!.category).opacity(Double.random(in: 0.3...1.0)) : ThemeColors.secondaryText.opacity(0.3))
-                                    : ThemeColors.secondaryText.opacity(0.3)
-                                )
-                                .frame(width: 3, height: CGFloat.random(in: 6...24))
-                                .animation(
-                                    .easeInOut(duration: 0.5)
-                                    .repeatForever(autoreverses: true)
-                                    .delay(Double(index) * 0.03),
-                                    value: isPlaying
-                                )
-                        }
-                    }
+            HStack(spacing: 2) {
+                ForEach(0..<30, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(
+                            interventionService.isPlaying
+                            ? (selectedIntervention != nil ? getInterventionColor(selectedIntervention!.category).opacity(Double.random(in: 0.3...1.0)) : ThemeColors.secondaryText.opacity(0.3))
+                            : ThemeColors.secondaryText.opacity(0.3)
+                        )
+                        .frame(width: 3, height: CGFloat.random(in: 6...24))
+                        .animation(
+                            interventionService.isPlaying
+                            ? .easeInOut(duration: 0.5)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.03)
+                            : .easeInOut(duration: 0.3),
+                            value: interventionService.isPlaying
+                        )
+                }
+            }
             .frame(height: 30)
             
             // Playback Controls
@@ -412,21 +517,22 @@ struct VoiceGuidedInterventionView: View {
                 
                 // Play/Pause
                 Button {
-                    if isPlaying {
-                        audioPlayer.pause()
+                    if interventionService.isPlaying {
+                        interventionService.pause()
                     } else {
                         playCurrentStep()
                     }
                 } label: {
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    Image(systemName: interventionService.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 56))
                         .foregroundColor(selectedIntervention != nil ? getInterventionColor(selectedIntervention!.category) : .blue)
                         .shadow(color: (selectedIntervention != nil ? getInterventionColor(selectedIntervention!.category) : .blue).opacity(0.3), radius: 10, x: 0, y: 5)
                 }
                 .hapticFeedback(.primary)
-                .scaleEffect(isPlaying ? 1.1 : 1.0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPlaying)
+                .scaleEffect(interventionService.isPlaying ? 1.1 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: interventionService.isPlaying)
                 .disabled(!ElevenLabsService.shared.isVoiceCloned)
+                .opacity(ElevenLabsService.shared.isVoiceCloned ? 1.0 : 0.6)
                 
                 // Next Step
                 Button {
@@ -446,9 +552,6 @@ struct VoiceGuidedInterventionView: View {
                 .fill(ThemeColors.secondaryBackground)
                 .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         )
-        .onReceive(audioPlayer.$isPlaying) { playing in
-            isPlaying = playing
-        }
     }
     
     // MARK: - Navigation Controls Section
@@ -535,6 +638,11 @@ struct VoiceGuidedInterventionView: View {
     private func startIntervention() {
         guard let selectedIntervention = selectedIntervention else { return }
         
+        // Pre-generate and cache all audio for this intervention
+        Task {
+            try? await interventionService.prewarmCache(for: selectedIntervention)
+        }
+        
         if selectedIntervention.category == .breathing {
             startBreathingTimer()
         }
@@ -552,18 +660,23 @@ struct VoiceGuidedInterventionView: View {
                 // Find the voice prompt for this step
                 if let voicePromptId = step.voicePromptId,
                    let voicePrompt = selectedIntervention.voicePrompts.first(where: { $0.id == voicePromptId }) {
-                    try await audioPlayer.playAudio(
+                    try await interventionService.playSegment(
                         text: voicePrompt.text,
                         emotion: .neutral
                     )
                 }
             } catch ElevenLabsError.noVoiceProfile {
                 // User doesn't have voice profile set up
-                print("🔧 Voice profile required for voice guided intervention")
+               
                 HapticManager.shared.notification(.warning)
-                // Could show an alert here to guide user to voice setup
+                
+                // Show user-friendly guidance
+                await MainActor.run {
+        
+                    showingVoiceSetup = true
+                }
             } catch {
-                print("Failed to play step audio: \(error)")
+              
                 HapticManager.shared.notification(.error)
             }
         }
@@ -589,7 +702,7 @@ struct VoiceGuidedInterventionView: View {
     }
     
     private func exitIntervention() {
-        audioPlayer.stop()
+        interventionService.stop()
         stopBreathingTimer()
         dismiss()
         
@@ -597,16 +710,88 @@ struct VoiceGuidedInterventionView: View {
     }
     
     private func completeIntervention() {
-        // Save completion data
-        Task {
-            // TODO: Implement intervention completion tracking
-            if let selectedIntervention = selectedIntervention {
-                print("Intervention completed: \(selectedIntervention.title)")
+        // Save completion data to Core Data
+        guard let selectedIntervention = selectedIntervention else { return }
+        
+        let completion = InterventionCompletionEntity(context: viewContext)
+        completion.id = UUID()
+        completion.interventionId = selectedIntervention.id
+        completion.interventionTitle = selectedIntervention.title
+        completion.interventionType = selectedIntervention.category.rawValue
+        completion.category = selectedIntervention.category.rawValue
+        completion.duration = Int32(Date().timeIntervalSince(sessionStartTime))
+        completion.effectivenessRating = Int16(effectivenessRating)
+        completion.stepsCompleted = Int16(currentStep + 1)
+        completion.totalSteps = Int16(selectedIntervention.steps.count)
+        completion.completedAt = Date()
+        completion.wasVoiceGuided = true
+        completion.notes = "Completed via VoiceGuidedInterventionView"
+        
+        // Save to Core Data
+        do {
+            try viewContext.save()
+            
+            
+            // Track completion with OneSignal
+            Task {
+                await trackInterventionCompletion(selectedIntervention)
+                await OneSignalService.shared.tagCompletionAndTriggerIAM(
+                    interventionTitle: selectedIntervention.title,
+                    category: selectedIntervention.category.rawValue,
+                    durationSeconds: Int(Date().timeIntervalSince(sessionStartTime)),
+                    rating: effectivenessRating
+                )
             }
+            
+        } catch {
+           
         }
         
         dismiss()
         HapticManager.shared.celebration(.goalCompleted)
+    }
+    
+    private func trackInterventionCompletion(_ intervention: VoiceGuidedIntervention) async {
+        // Send completion event to OneSignal for analytics and follow-up
+        let completionData: [String: Any] = [
+            "event_type": "intervention_completed",
+            "intervention_id": intervention.id.uuidString,
+            "intervention_title": intervention.title,
+            "intervention_category": intervention.category.rawValue,
+            "duration_seconds": Int(Date().timeIntervalSince(sessionStartTime)),
+            "effectiveness_rating": effectivenessRating,
+            "steps_completed": currentStep + 1,
+            "total_steps": intervention.steps.count,
+            "was_voice_guided": true,
+            "completion_timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        
+        // Convert completionData to String values for OneSignal
+        let stringData = completionData.mapValues { value in
+            if let stringValue = value as? String {
+                return stringValue
+            } else {
+                return String(describing: value)
+            }
+        }
+        
+        // Send to OneSignal for user behavior tracking
+        await OneSignalService.shared.sendIndividualNotification(
+            NotificationContent(
+                title: "🎉 Great job!",
+                body: "You completed \(intervention.title). How are you feeling now?",
+                actionButtons: [
+                    NotificationActionButton(id: "feeling_good", text: "Feeling Better"),
+                    NotificationActionButton(id: "need_more", text: "Need More Help")
+                ],
+                customData: stringData,
+                categoryIdentifier: "intervention_completion",
+                sound: .default,
+                badge: 0,
+                userInfo: stringData
+            )
+        )
+        
     }
     
     // MARK: - Breathing Timer
@@ -615,7 +800,13 @@ struct VoiceGuidedInterventionView: View {
         stopBreathingTimer()
         
         breathingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            updateBreathingAnimation()
+            Task { @MainActor in
+                updateBreathingAnimation()
+            }
+        }
+        // Ensure timer runs on main run loop
+        if let timer = breathingTimer {
+            RunLoop.main.add(timer, forMode: .common)
         }
     }
     
@@ -626,44 +817,70 @@ struct VoiceGuidedInterventionView: View {
     
     private func updateBreathingAnimation() {
         let duration = getBreathingDuration()
-        let increment = 0.1 / duration
-        
+        let increment = duration > 0 ? 0.1 / duration : 1.0
         switch breathingPhase {
         case .inhale:
+            phaseScheduled = false
             breathingProgress += increment
             if breathingProgress >= 1.0 {
                 breathingProgress = 1.0
                 breathingPhase = .hold
             }
-            
         case .hold:
-            // Hold for 1 second
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if duration <= 0 {
                 breathingPhase = .exhale
+                phaseScheduled = false
+                return
             }
-            
+            if !phaseScheduled {
+                phaseScheduled = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                    Task { @MainActor in
+                        breathingPhase = .exhale
+                        phaseScheduled = false
+                    }
+                }
+            }
         case .exhale:
+            phaseScheduled = false
             breathingProgress -= increment
             if breathingProgress <= 0.0 {
                 breathingProgress = 0.0
                 breathingPhase = .pause
             }
-            
         case .pause:
-            // Pause for 1 second
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if duration <= 0 {
                 breathingPhase = .inhale
+                phaseScheduled = false
+                return
+            }
+            if !phaseScheduled {
+                phaseScheduled = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                    Task { @MainActor in
+                        breathingPhase = .inhale
+                        phaseScheduled = false
+                    }
+                }
             }
         }
     }
     
     private func getBreathingDuration() -> Double {
-        // Default breathing pattern for 4-7-8 breathing
-        switch breathingPhase {
-        case .inhale: return 4.0
-        case .hold: return 7.0
-        case .exhale: return 8.0
-        case .pause: return 1.0
+        let technique = selectedBreathingType
+        switch technique {
+        case .boxBreathing:
+            switch breathingPhase { case .inhale: return 4; case .hold: return 4; case .exhale: return 4; case .pause: return 4 }
+        case .fourSevenEight:
+            switch breathingPhase { case .inhale: return 4; case .hold: return 7; case .exhale: return 8; case .pause: return 1 }
+        case .equalBreathing:
+            switch breathingPhase { case .inhale: return 6; case .hold: return 0; case .exhale: return 6; case .pause: return 0 }
+        case .coherentBreathing:
+            switch breathingPhase { case .inhale: return 5; case .hold: return 0; case .exhale: return 5; case .pause: return 0 }
+        case .bellowsBreath:
+            switch breathingPhase { case .inhale: return 1; case .hold: return 0; case .exhale: return 1; case .pause: return 0 }
+        case .none:
+            switch breathingPhase { case .inhale: return 4; case .hold: return 7; case .exhale: return 8; case .pause: return 1 }
         }
     }
     
@@ -918,3 +1135,4 @@ struct InterventionCompletionView: View {
     )
     .environmentObject(ThemeManager())
 }
+
