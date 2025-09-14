@@ -21,86 +21,73 @@ struct InsightsView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                // Background gradient
-                ThemeColors.primaryBackground
-                .ignoresSafeArea()
-                
-                // Premium insights content
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // MARK: - Overview Cards
-                        InsightsOverviewSection(viewModel: viewModel)
-                        
-                        // MARK: - Voice Characteristics Analysis
-                        VoiceCharacteristicsSection(viewModel: viewModel)
-                        
-                        // MARK: - Emotion Trends Chart
-                        EmotionTrendsChart(viewModel: viewModel)
-                        
-                        // MARK: - Emotion Distribution
-                        EmotionDistributionChart(viewModel: viewModel)
-                        
-                        // MARK: - Weekly Patterns
-                        WeeklyPatternsChart(viewModel: viewModel)
-                        
-                        // MARK: - Weekly Summary
-                        TodaySummarySection(viewModel: viewModel)
-                        
-                        
-                        Spacer(minLength: 100) // Tab bar spacing
-                    }
-                    .padding(.horizontal)
+        
+        Group {
+            if #available(iOS 16.0, *) {
+                NavigationStack {
+                    mainContent
                 }
-                
+            } else {
+                NavigationView {
+                    mainContent
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
             }
-            .navigationTitle("Insights")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar(content: {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        if subscriptionService.hasDataExport() {
-                            HapticManager.shared.buttonPress(.primary)
-                            Task {
-                                await exportToPDF()
-                            }
-                        } else {
-                            showProToast = true
-                            // Auto-dismiss toast after 2 seconds
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                showProToast = false
-                            }
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            if pdfExportManager.isExporting {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "square.and.arrow.up")
-                            }
-                            Text(pdfExportManager.isExporting ? "Exporting..." : "Export")
-                                .font(.caption)
-                        }
-                        .foregroundColor(pdfExportManager.isExporting ? .secondary : .primary)
-                        .scaleEffect(isExportPressed ? 0.96 : 1.0)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isExportPressed)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .simultaneousGesture(DragGesture(minimumDistance: 0)
-                        .onChanged { _ in
-                            if !isExportPressed { isExportPressed = true }
-                        }
-                        .onEnded { _ in
-                            isExportPressed = false
-                        }
-                    )
-                    .help(subscriptionService.hasDataExport() ? "Export all charts and insights data as a PDF report" : "Upgrade to Pro to export data")
-                }
-            })
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            if let pdfURL = pdfURL {
+                ShareSheet(activityItems: [pdfURL])
+            }
+        }
+        .alert("Export Error", isPresented: .constant(pdfExportManager.exportError != nil)) {
+            Button("OK") {
+                pdfExportManager.exportError = nil
+            }
+        } message: {
+            if let error = pdfExportManager.exportError {
+                Text(error)
+            }
+        }
+        .alert("Export Successful", isPresented: $showingSuccessAlert) {
+            Button("OK") { }
+        } message: {
+            Text("Your insights report has been exported successfully and is ready to share.")
+        }
+        .onAppear {
+            // TODO: Re-enable subscription check when InsightsView is production ready
+            // if subscriptionService.hasActiveSubscription {
+            viewModel.loadInsightsData()
+            // }
+        }
+        .onChange(of: viewModel.selectedPeriod) {
+            viewModel.refreshData()
+        }
+    }
+
+    // MARK: - Main Content (shared for NavigationView/NavigationStack)
+    @ViewBuilder
+    private var mainContent: some View {
+        ZStack {
             
-            // Pro Toast Overlay
+            ThemeColors.primaryBackground
+            
+            .ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 20) {
+                    InsightsOverviewSection(viewModel: viewModel)
+                    VoiceCharacteristicsSection(viewModel: viewModel)
+                    EmotionTrendsChart(viewModel: viewModel)
+                    EmotionDistributionChart(viewModel: viewModel)
+                    WeeklyPatternsChart(viewModel: viewModel)
+                    TodaySummarySection(viewModel: viewModel)
+                    Spacer(minLength: 100)
+                }
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+            }
+            
             if showProToast {
                 VStack {
                     Spacer()
@@ -124,33 +111,49 @@ struct InsightsView: View {
                 .animation(.easeInOut(duration: 0.3), value: showProToast)
             }
         }
-        .sheet(isPresented: $showingShareSheet) {
-            if let pdfURL = pdfURL {
-                ShareSheet(activityItems: [pdfURL])
+        .navigationTitle("Insights")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar(content: {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    if subscriptionService.hasDataExport() {
+                        HapticManager.shared.buttonPress(.primary)
+                        Task {
+                            await exportToPDF()
+                        }
+                    } else {
+                        showProToast = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            showProToast = false
+                        }
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        if pdfExportManager.isExporting {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        Text(pdfExportManager.isExporting ? "Exporting..." : "Export")
+                            .font(.caption)
+                    }
+                    .foregroundColor(pdfExportManager.isExporting ? .secondary : .primary)
+                    .scaleEffect(isExportPressed ? 0.96 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isExportPressed)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .simultaneousGesture(DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !isExportPressed { isExportPressed = true }
+                    }
+                    .onEnded { _ in
+                        isExportPressed = false
+                    }
+                )
+                .help(subscriptionService.hasDataExport() ? "Export all charts and insights data as a PDF report" : "Upgrade to Pro to export data")
             }
-        }
-        .alert("Export Error", isPresented: .constant(pdfExportManager.exportError != nil)) {
-            Button("OK") {
-                pdfExportManager.exportError = nil
-            }
-        } message: {
-            if let error = pdfExportManager.exportError {
-                Text(error)
-            }
-        }
-        .alert("Export Successful", isPresented: $showingSuccessAlert) {
-            Button("OK") { }
-        } message: {
-            Text("Your insights report has been exported successfully and is ready to share.")
-        }
-        .onAppear {
-            
-            viewModel.loadInsightsData()
-
-        }
-        .onChange(of: viewModel.selectedPeriod) {
-            viewModel.refreshData()
-        }
+        })
     }
     
     // MARK: - PDF Export Function

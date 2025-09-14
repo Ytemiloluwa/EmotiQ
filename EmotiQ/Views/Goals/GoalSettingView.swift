@@ -15,61 +15,59 @@ struct GoalSettingView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                ThemeColors.primaryBackground
-                    .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // MARK: - Header
-                        GoalSettingHeaderView()
-                        
-                        // MARK: - Active Goals
-                        if !viewModel.activeGoals.isEmpty {
-                            ActiveGoalsSection(goals: viewModel.activeGoals, viewModel: viewModel)
-                        }
-                        
-                        // MARK: - Goal Categories
-                        GoalCategoriesSection(viewModel: viewModel)
-                        
-                        // MARK: - Quick Goal Templates
-                        ///QuickGoalTemplatesSection(viewModel: viewModel)
-                        
-                        // MARK: - Template Goals (Examples)
-                        //if !viewModel.templateGoals.isEmpty {
-                            //TemplateGoalsSection(goals: viewModel.templateGoals, viewModel: viewModel)
-                        //}
-//                        
-//                        // MARK: - Progress Overview
-//                        if !viewModel.activeGoals.isEmpty {
-//                            ProgressOverviewSection(viewModel: viewModel)
-//                        }
-//                        
-                        Spacer(minLength: 100)
-                    }
-                    .padding(.horizontal)
+        FeatureGateView(feature: .goalSetting) {
+            Group {
+                if #available(iOS 16.0, *) {
+                    NavigationStack { mainContent }
+                } else {
+                    NavigationView { mainContent }
+                        .navigationViewStyle(StackNavigationViewStyle())
                 }
             }
-            .navigationTitle("Goal Setting")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add Goal") {
-                        viewModel.showingGoalCreation = true
+        }
+    } // Close FeatureGateView
+
+    @ViewBuilder
+    private var mainContent: some View {
+        ZStack {
+            ThemeColors.primaryBackground
+                .ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 24) {
+                    GoalSettingHeaderView()
+                    
+                    if !viewModel.activeGoals.isEmpty {
+                        ActiveGoalsSection(goals: viewModel.activeGoals, viewModel: viewModel)
                     }
-                    .foregroundColor(ThemeColors.accent)
+                    
+                    GoalCategoriesSection(viewModel: viewModel)
+                    
+                    Spacer(minLength: 100)
                 }
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
             }
-            .sheet(isPresented: $viewModel.showingGoalCreation) {
-                GoalCreationView(viewModel: viewModel)
+        }
+        .navigationTitle("Goal Setting")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Add Goal") {
+                    viewModel.showingGoalCreation = true
+                }
+                .foregroundColor(ThemeColors.accent)
             }
-            .sheet(item: $viewModel.selectedGoal) { goal in
-                GoalDetailView(goal: goal, viewModel: viewModel)
-            }
-            .onAppear {
-                viewModel.loadGoals()
-            }
+        }
+        .sheet(isPresented: $viewModel.showingGoalCreation) {
+            GoalCreationView(viewModel: viewModel)
+        }
+        .sheet(item: $viewModel.selectedGoal) { goal in
+            GoalDetailView(goal: goal, viewModel: viewModel)
+        }
+        .onAppear {
+            viewModel.loadGoals()
         }
     }
 }

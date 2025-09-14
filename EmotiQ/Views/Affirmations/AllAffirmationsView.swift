@@ -26,56 +26,58 @@ struct AllAffirmationsView: View {
     @State private var selectedCategory: AffirmationCategory?
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                if affirmations.isEmpty {
-                    emptyStateView
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(groupedAffirmations.keys.sorted(by: { getDateFromGroupingString($0) > getDateFromGroupingString($1) }), id: \.self) { dateGroup in
-                                VStack(alignment: .leading, spacing: 12) {
-                                    // Date Group Header
-                                    HStack {
-                                        Text(dateGroup)
-                                            .font(.title2)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(ThemeColors.primaryText)
-                                        
-                                        Spacer()
-                                        
-                                        // Affirmations count for this day
-                                        Text("\(groupedAffirmations[dateGroup]?.count ?? 0) affirmations")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(ThemeColors.primaryText)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
+        Group {
+            if #available(iOS 16.0, *) {
+                NavigationStack { mainContent }
+            } else {
+                NavigationView { mainContent }
+                    .navigationViewStyle(StackNavigationViewStyle())
+            }
+        }
+    }
 
-                                    }
-                                    .padding(.horizontal, 20)
-                                    .padding(.top, dateGroup == groupedAffirmations.keys.sorted(by: { getDateFromGroupingString($0) > getDateFromGroupingString($1) }).first ? 0 : 20)
-                                    
-                                    // Affirmations for this date group
-                                    ForEach(groupedAffirmations[dateGroup] ?? [], id: \.objectID) { affirmation in
-                                        AffirmationCard(affirmation: affirmation)
-                                            .padding(.horizontal, 20)
-                                    }
+    @ViewBuilder
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            if affirmations.isEmpty {
+                emptyStateView
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(groupedAffirmations.keys.sorted(by: { getDateFromGroupingString($0) > getDateFromGroupingString($1) }), id: \.self) { dateGroup in
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text(dateGroup)
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(ThemeColors.primaryText)
+                                    Spacer()
+                                    Text("\(groupedAffirmations[dateGroup]?.count ?? 0) affirmations")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(ThemeColors.primaryText)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.top, dateGroup == groupedAffirmations.keys.sorted(by: { getDateFromGroupingString($0) > getDateFromGroupingString($1) }).first ? 0 : 20)
+                                
+                                ForEach(groupedAffirmations[dateGroup] ?? [], id: \.objectID) { affirmation in
+                                    AffirmationCard(affirmation: affirmation)
+                                        .padding(.horizontal, 20)
                                 }
                             }
                         }
-                        .padding(.bottom, 20)
                     }
+                    .frame(maxWidth: 900)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 20)
                 }
             }
-            .navigationTitle("All Affirmations")
-            .padding(.bottom, 30)
-            .navigationBarTitleDisplayMode(.large)
-            
-            //.padding(.bottom, 20)
-
         }
-
+        .navigationTitle("All Affirmations")
+        .padding(.bottom, 30)
+        .navigationBarTitleDisplayMode(.large)
     }
     
     // MARK: - Computed Properties

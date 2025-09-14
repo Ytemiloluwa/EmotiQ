@@ -9,56 +9,47 @@ struct MicroInterventionsView: View {
     //@State private var showingVoiceGuidedIntervention = false
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                ThemeColors.primaryBackground
-                    .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // MARK: - Header
-                        MicroInterventionsHeaderView()
-                        
-                        // MARK: - Quick Relief Section
-                        QuickReliefSection(viewModel: viewModel)
-                        
-                        // MARK: - Breathing Exercises
-                       // BreathingExercisesSection(viewModel: viewModel)
-                        
-                        // MARK: - Emotional Prompts
-                        EmotionalPromptsSection(viewModel: viewModel)
-                        
-//                        // MARK: - Mindfulness Moments
-//                        MindfulnessMomentsSection(viewModel: viewModel)
-                        
-//                        // MARK: - Recent Activity
-//                        if !viewModel.recentInterventions.isEmpty {
-//                            RecentActivitySection(viewModel: viewModel)
-//                        }
-                        
-                        Spacer(minLength: 100)
-                    }
-                    .padding(.horizontal)
-                }
-            }
-            .navigationTitle("Micro-Interventions")
-            .navigationBarTitleDisplayMode(.large)
-            //            .toolbar {
-            //                ToolbarItem(placement: .navigationBarTrailing) {
-            //                    Button("Done") {
-            //                        dismiss()
-            //                    }
-            //                    .foregroundColor(ThemeColors.accent)
-            //                }
-            //            }
-            .sheet(item: $viewModel.selectedIntervention) { intervention in
-                InterventionDetailView(intervention: intervention, viewModel: viewModel)
-            }
-            .onAppear {
-                viewModel.loadInterventions()
+        Group {
+            if #available(iOS 16.0, *) {
+                NavigationStack { mainContent }
+            } else {
+                NavigationView { mainContent }
+                    .navigationViewStyle(StackNavigationViewStyle())
             }
         }
     }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        ZStack {
+            ThemeColors.primaryBackground
+                .ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 24) {
+                    
+                    MicroInterventionsHeaderView()
+                    QuickReliefSection(viewModel: viewModel)
+
+                    EmotionalPromptsSection(viewModel: viewModel)
+
+                    Spacer(minLength: 100)
+                }
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+            }
+        }
+        .navigationTitle("Micro-Interventions")
+        .navigationBarTitleDisplayMode(.large)
+        .sheet(item: $viewModel.selectedIntervention) { intervention in
+            InterventionDetailView(intervention: intervention, viewModel: viewModel)
+        }
+        .onAppear {
+            viewModel.loadInterventions()
+        }
+    }
+    
 }
 
 // MARK: - Micro Interventions Header
