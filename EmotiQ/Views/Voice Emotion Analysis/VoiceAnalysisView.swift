@@ -66,12 +66,12 @@ struct VoiceAnalysisView: View {
                 SubscriptionPaywallView()
             }
             .alert("Weekly Limit Reached", isPresented: $viewModel.showingLimitAlert) {
-                Button("Upgrade to Premium") {
+                Button("Upgrade to Pro/Premium") {
                     showingSubscriptionPaywall = true
                 }
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("You've reached your weekly limit of \(viewModel.weeklyUsageLimit) voice analyses. Upgrade to Premium for unlimited access.")
+                Text("You've reached your weekly limit of \(viewModel.weeklyUsageLimit) voice analyses. Upgrade to pro/ Premium for unlimited access.")
             }
             .alert("Analysis Error", isPresented: $viewModel.showingErrorAlert) {
                 Button("OK", role: .cancel) { }
@@ -81,6 +81,11 @@ struct VoiceAnalysisView: View {
         }
         .onAppear {
             viewModel.checkDailyUsage()
+            
+            Task {
+                
+                await cleanupAudioSessionforRecording()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToVoiceAnalysis)) { _ in
             // VoiceAnalysisView is already active, no navigation needed
@@ -265,7 +270,7 @@ struct UsageLimitCard: View {
             .frame(height: 8)
             
             if used >= limit {
-                Text("Upgrade to Premium for unlimited voice analyses")
+                Text("Upgrade to Pro/Premium for unlimited voice analyses")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
@@ -388,6 +393,20 @@ struct VoiceAnalysisView_Previews: PreviewProvider {
             .environmentObject(CoreMLEmotionService.shared)
             .environmentObject(SubscriptionService.shared)
             .environmentObject(ThemeManager())
+    }
+}
+
+private func cleanupAudioSessionforRecording() async {
+    
+    do {
+        
+        try await AudioSessionManager.shared.deactivateAudioSession()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try await AudioSessionManager.shared.configureAudioSession(for: .recording)
+    }
+    
+    catch{
+        
     }
 }
 

@@ -888,8 +888,8 @@ class OneSignalNotificationManager: ObservableObject {
         ].compactMapValues { $0 }
         
         // Add rich media if available
+        var updatedData = notificationData
         if let richMedia = content.richMedia {
-            var updatedData = notificationData
             if let imageURL = richMedia.imageURL {
                 updatedData["big_picture"] = imageURL
                 updatedData["large_icon"] = imageURL
@@ -898,9 +898,10 @@ class OneSignalNotificationManager: ObservableObject {
                 updatedData["ios_sound"] = soundName
             }
             
-            // Send via OneSignal REST API
-            await oneSignalService.sendNotificationViaAPI(updatedData)
         }
+        
+        // Send via OneSignal REST API
+        await oneSignalService.sendNotificationViaAPI(updatedData)
         
         
         // Update campaign analytics

@@ -628,14 +628,21 @@ struct EmotionLineChart: View {
     let data: [EmotionTrendData]
     
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        // Compute dynamic Y-axis ticks based on max check-ins
+        let maxCheckIns = data.map { $0.checkInCount }.max() ?? 0
+        let ticks = yAxisTicks(maxValue: maxCheckIns, targetTicks: 6)
+        let tickCount = max(ticks.count, 2)
+        let maxScale = max(ticks.last ?? 1, 1)
+        let rowHeight: CGFloat = 100.0 / CGFloat(tickCount)
+        
+        return HStack(alignment: .top, spacing: 8) {
             // Y-axis labels
             VStack(alignment: .trailing, spacing: 0) {
-                ForEach((0...5).reversed(), id: \.self) { i in
-                    Text("\(i * 2)")
+                ForEach(ticks.reversed(), id: \.self) { value in
+                    Text("\(value)")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                        .frame(height: 16.67) // 100 height / 6 labels = 16.67 each
+                        .frame(height: rowHeight)
                 }
             }
             .frame(width: 20)
@@ -646,10 +653,10 @@ struct EmotionLineChart: View {
                     ZStack {
                         // Grid lines
                         VStack(spacing: 0) {
-                            ForEach(0..<6) { i in
+                            ForEach(0..<tickCount, id: \.self) { i in
                                 Divider()
                                     .opacity(0.9)
-                                if i < 5 {
+                                if i < tickCount - 1 {
                                     Spacer()
                                 }
                             }
@@ -665,11 +672,11 @@ struct EmotionLineChart: View {
                             let height = geometry.size.height
                             let stepX = width / CGFloat(max(data.count - 1, 1))
                             
-                            // Primary emotion line (blue)
+                            // Check-ins line (blue)
                             let primaryPoints = data.enumerated().map { index, item in
                                 CGPoint(
                                     x: CGFloat(index) * stepX,
-                                    y: height - (CGFloat(item.primaryEmotionCount) / 10.0) * height
+                                    y: height - (CGFloat(item.checkInCount) / CGFloat(maxScale)) * height
                                 )
                             }
                             
@@ -693,7 +700,7 @@ struct EmotionLineChart: View {
                                 .frame(width: 6, height: 6)
                                 .position(
                                     x: CGFloat(index) * stepX,
-                                    y: height - (CGFloat(item.primaryEmotionCount) / 10.0) * height
+                                    y: height - (CGFloat(item.checkInCount) / CGFloat(maxScale)) * height
                                 )
                         
                         }
@@ -722,7 +729,42 @@ struct EmotionLineChart: View {
         formatter.dateFormat = "MMM d"
         return formatter.string(from: date)
     }
+    
+    // MARK: - Y-axis tick helpers
+    private func yAxisTicks(maxValue: Int, targetTicks: Int) -> [Int] {
+        // Handle zero safely
+        guard maxValue > 0 else { return [0, 1] }
+        let step = niceStep(maxValue: maxValue, targetTicks: targetTicks)
+        let maxScale = ((maxValue + step - 1) / step) * step
+        var ticks: [Int] = []
+        var value = 0
+        while value <= maxScale {
+            ticks.append(value)
+            value += step
+        }
+        return ticks
+    }
+    
+    private func niceStep(maxValue: Int, targetTicks: Int) -> Int {
+        if maxValue <= 0 { return 1 }
+        let rough = Double(maxValue) / Double(max(targetTicks, 1))
+        if rough == 0 { return 1 }
+        let magnitude = pow(10.0, floor(log10(rough)))
+        let residual = rough / magnitude
+        let niceResidual: Double
+        if residual <= 1.0 {
+            niceResidual = 1.0
+        } else if residual <= 2.0 {
+            niceResidual = 2.0
+        } else if residual <= 5.0 {
+            niceResidual = 5.0
+        } else {
+            niceResidual = 10.0
+        }
+        return max(1, Int(niceResidual * magnitude))
+    }
 }
+
 
 struct Diamond: Shape {
     func path(in rect: CGRect) -> Path {

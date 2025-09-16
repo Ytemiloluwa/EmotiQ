@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import CoreHaptics
+import AVFoundation
 
 struct AffirmationsView: View {
     @StateObject private var affirmationEngine = AffirmationEngine.shared
@@ -110,6 +111,8 @@ struct AffirmationsView: View {
             // Load initial state
             Task {
                 await loadUIState()
+                
+                await cleanupAudioSessionForPlayback()
             }
         }
         .onChange(of: securePurchaseManager.affirmationsViewUsage) { _, _ in
@@ -868,6 +871,18 @@ extension Animation {
         }
         .padding()
         .environmentObject(SubscriptionService.shared)
+    }
+}
+
+// MARK: - Audio Session Cleanup
+private func cleanupAudioSessionForPlayback() async {
+    do {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP])
+        try audioSession.setActive(true)
+        
+    } catch {
+
     }
 }
 

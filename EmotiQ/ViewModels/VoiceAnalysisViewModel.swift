@@ -434,7 +434,7 @@ class VoiceAnalysisViewModel: ObservableObject {
         } else if isRecording {
             return "Stop Analysis"
         } else if !canRecord {
-            return "Daily Limit Reached"
+            return "Free trial Reached"
         } else {
             return "Start Analysis"
         }
@@ -468,7 +468,7 @@ extension VoiceAnalysisViewModel {
         if subscriptionService.hasActiveSubscription {
             return ("Unlimited Access", .green)
         } else if dailyUsageCount >= dailyUsageLimit {
-            return ("Daily Limit Reached", .red)
+            return ("Free trial Reached", .red)
         } else {
             let remaining = dailyUsageLimit - dailyUsageCount
             return ("\(remaining) analyses remaining", .blue)

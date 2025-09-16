@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import CoreData
+import AVFoundation
 
 struct AllAffirmationsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -78,6 +79,13 @@ struct AllAffirmationsView: View {
         .navigationTitle("All Affirmations")
         .padding(.bottom, 30)
         .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            
+            Task {
+                
+                await cleanupAudioSessionForPlayback()
+            }
+        }
     }
     
     // MARK: - Computed Properties
@@ -300,6 +308,19 @@ struct AffirmationCard: View {
         
     }
 }
+
+// MARK: - Audio Session Cleanup
+private func cleanupAudioSessionForPlayback() async {
+    do {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP])
+        try audioSession.setActive(true)
+        
+    } catch {
+       
+    }
+}
+
 
 #Preview {
     let context = PersistenceController.preview.container.viewContext

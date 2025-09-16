@@ -81,8 +81,19 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         // Initialize user state
         initializeUserState()
         
+        // clear any pending local predictive notifications
+        
+        clearPredictiveLocalNotifications()
+        
         // Request permission if not already granted
         requestNotificationPermission()
+        
+        // Schedule today's streak maintenance reminder at 6:00 PM
+          Task { @MainActor in
+              let scheduler = SmartNotificationScheduler()
+              await scheduler.scheduleStreakMaintenanceReminder()
+              await scheduler.scheduleDailyCheckIn()
+          }
     }
     
     // MARK: - OSNotificationClickListener Protocol
@@ -141,7 +152,7 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         }
         
         OneSignal.Notifications.requestPermission({ accepted in
-           
+            
             // Don't rely on the callback result - it's unreliable
             // Instead, let the subscription state monitoring handle the permission check
             Task { @MainActor in
@@ -228,19 +239,19 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
                 
                 // If we have permission and subscription, try to send welcome notification
                 if !(subscriptionId?.isEmpty ?? true) && !self.hasTriggeredWelcomeNotification && !self.isSendingWelcomeNotification {
-
+                    
                     self.setupUserTags()
                     self.scheduleInitialWelcomeNotification()
                 } else if self.hasTriggeredWelcomeNotification {
-               
+                    
                 } else if self.isSendingWelcomeNotification {
-                 
+                    
                 } else {
-               
+                    
                 }
             } else {
                 self.notificationPermissionStatus = .denied
-            
+                
             }
         }
     }
@@ -285,15 +296,10 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
             options: [.foreground]
         )
         
-        let remindLaterAction = UNNotificationAction(
-            identifier: "remind_later",
-            title: "Remind Later",
-            options: []
-        )
         
         let emotionCheckInCategory = UNNotificationCategory(
             identifier: "emotion_checkin",
-            actions: [checkInAction, remindLaterAction],
+            actions: [checkInAction],
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
@@ -331,9 +337,6 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         case "check_in":
             // User tapped "Check In" - send OneSignal notification with rich content
             handleCheckInAction(userInfo: userInfo)
-        case "remind_later":
-            // User tapped "Remind Later" - reschedule for 1 hour later
-            handleRemindLaterAction(userInfo: userInfo)
         default:
             // User tapped the notification itself
             handleNotificationTap(userInfo: userInfo)
@@ -373,34 +376,10 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         }
     }
     
-    private func handleRemindLaterAction(userInfo: [AnyHashable: Any]) {
-        // Reschedule for 1 hour later
-        let newTime = Date().addingTimeInterval(3600) // 1 hour
-        
-        let content = UNMutableNotificationContent()
-        content.title = "💫 Emotional Check-in"
-        content.body = "How are you feeling right now? Let's take a mindful moment to check in."
-        content.sound = .default
-        content.categoryIdentifier = "emotion_checkin"
-        content.userInfo = userInfo
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3600, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "predictive_\(UUID().uuidString)",
-            content: content,
-            trigger: trigger
-        )
-        
-        Task {
-            try? await UNUserNotificationCenter.current().add(request)
-          
-        }
-    }
-    
     
     private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
         // Handle when user taps the notification itself
-      
+        
     }
     
     // MARK: - Emotion Detection Integration
@@ -442,7 +421,7 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
     
     // MARK: - Emotion-Triggered Notifications
     private func processEmotionAnalysisResult(_ result: EmotionAnalysisResult) async {
-
+        
         
         // Update user tags with current emotional state
         updateEmotionalStateTags(result)
@@ -452,10 +431,10 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         
         
         if shouldTrigger {
-
+            
             await triggerEmotionBasedIntervention(result)
         } else {
-
+            
         }
         
         // Delegate to other systems (instead of duplicate observers)
@@ -475,8 +454,6 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
             context: ["source": "voice_analysis"]
         )
         
-        // 3. Schedule future interventions using local notifications (reliable scheduling)
-        await schedulePredictiveInterventionsLocally(basedOn: result)
     }
     
     private func processSpeechAnalysisResult(_ transcription: String) async {
@@ -497,66 +474,24 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         }
     }
     
-    // MARK: - Predictive Intervention System
-    private func schedulePredictiveInterventionsLocally(basedOn result: EmotionAnalysisResult) async {
-        // Use ML to predict when user will need emotional support (limited to 24 hours)
-        let predictions = await interventionPredictor.predictFutureEmotionalNeeds(
-            currentEmotion: convertEmotionCategoryToType(result.primaryEmotion),
-            confidence: result.confidence,
-            timeOfDay: Calendar.current.component(.hour, from: Date()),
-            dayOfWeek: Calendar.current.component(.weekday, from: Date())
-        )
-        
-        // Schedule local notifications for predictions (reliable scheduling)
-        for prediction in predictions {
-            await scheduleLocalInterventionNotification(prediction)
+    private func clearPredictiveLocalNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let ids = requests.filter { req in
+                req.identifier.hasPrefix("predictive_") || req.content.categoryIdentifier == "emotion_checkin"
+            }.map { $0.identifier }
+            if !ids.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: ids)
+            }
         }
-    }
-    
-    private func scheduleLocalInterventionNotification(_ prediction: EmotionalPrediction) async {
-        // Check if scheduling is within 24 hours
-        let timeUntilScheduled = prediction.optimalTime.timeIntervalSince(Date())
-        guard timeUntilScheduled > 0 && timeUntilScheduled <= 86400 else {
-  
-            return
-        }
-        
-        // Create local notification content
-        let content = UNMutableNotificationContent()
-        content.title = "💫 Emotional Check-in"
-        content.body = "How are you feeling right now? Let's take a mindful moment to check in."
-        content.sound = .default
-        content.categoryIdentifier = "emotion_checkin"
-        
-        // Add custom data for when user interacts
-        content.userInfo = [
-            "type": "predictive_intervention",
-            "emotion": prediction.predictedEmotion.rawValue,
-            "intervention": prediction.recommendedIntervention.rawValue,
-            "confidence": prediction.confidence,
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
-            "scheduled_time": ISO8601DateFormatter().string(from: prediction.optimalTime)
-        ]
-        
-        // Create trigger for the scheduled time
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: timeUntilScheduled,
-            repeats: false
-        )
-        
-        // Create request
-        let request = UNNotificationRequest(
-            identifier: "predictive_\(UUID().uuidString)",
-            content: content,
-            trigger: trigger
-        )
-        
-        // Schedule the notification
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-
-        } catch {
-          
+        center.getDeliveredNotifications { notifications in
+            let ids = notifications.filter { item in
+                item.request.identifier.hasPrefix("predictive_") || item.request.content.categoryIdentifier == "emotion_checkin"
+            }.map { $0.request.identifier }
+            if !ids.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: ids)
+            }
+            
         }
     }
     
@@ -844,7 +779,17 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         // API key is handled by the secure proxy - no need to include it in the request
         
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: data)
+            
+            let playerId = OneSignal.User.pushSubscription.id
+            let optedIn = OneSignal.User.pushSubscription.optedIn
+            guard let nonEmptyPlayerId = playerId, !nonEmptyPlayerId.isEmpty, optedIn else {
+                return false
+            }
+            
+            var payload = data
+            payload["include_player_ids"] = [nonEmptyPlayerId]
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             
      
             if let jsonString = String(data: request.httpBody!, encoding: .utf8) {
@@ -858,7 +803,7 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
       
                     
                     // Save notification to history
-                    await saveNotificationToHistory(data)
+                    await saveNotificationToHistory(payload)
                     return true
                 } else {
                   
