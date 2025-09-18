@@ -80,51 +80,7 @@ struct AppSettingsView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         // Push Notifications
-                        FullWidthSettingsRow(
-                            icon: "bell",
-                            title: "Push Notifications",
-                            subtitle: OneSignalNotificationManager.shared.notificationPermissionGranted ? "Enabled" : "Disabled",
-                            action: {
-                                HapticManager.shared.selection()
-                                OneSignalService.shared.requestNotificationPermission()
-                            }
-                        )
-                        
-//                        // Weekly Reports
-//                        FullWidthSettingsRow(
-//                            icon: "chart.bar",
-//                            title: "Weekly Reports",
-//                            subtitle: "Get insights about your emotional journey",
-//                            action: { }
-//                        )
-//                        
-//                        // Dark Mode
-//                        FullWidthSettingsRow(
-//                            icon: "moon",
-//                            title: "Dark Mode",
-//                            subtitle: viewModel.darkModeEnabled ? "On" : "Off",
-//                            action: {
-//                                HapticManager.shared.selection()
-//                                viewModel.toggleDarkMode()
-//                            }
-//                        )
-//                        
-//                        // Recording Quality
-//                        FullWidthSettingsRow(
-//                            icon: "speaker.wave.2",
-//                            title: "Recording Quality",
-//                            subtitle: "High quality audio analysis",
-//                            action: { }
-//                        )
-//                        
-//                        // Noise Reduction
-//                        FullWidthSettingsRow(
-//                            icon: "waveform",
-//                            title: "Noise Reduction",
-//                            subtitle: "Improve voice analysis accuracy",
-//                            action: { }
-//                        )
-                        
+                     NotificationToggleRow()
 
                     }
                     .background(
@@ -196,3 +152,72 @@ struct ProfileSettingsViews_Previews: PreviewProvider {
     }
 }
 
+// MARK: - Notification Toggle Row
+struct NotificationToggleRow: View {
+    @StateObject private var notificationManager = OneSignalNotificationManager.shared
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Icon
+            Image(systemName: "bell")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(.purple)
+                .frame(width: 24, height: 24)
+            
+            // Title and subtitle
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Notifications")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.primary)
+                
+                Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Tap to enable")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Toggle
+            Toggle("", isOn: Binding(
+                get: { notificationManager.notificationPermissionGranted },
+                set: { newValue in
+                    if newValue {
+                        if notificationManager.notificationPermissionGranted {
+                            
+                            return
+                        }
+                        else {
+                            
+                            notificationManager.showingNotificationSettingsAlert = true
+                        }
+                        
+                    } else {
+                        // User wants to disable notifications -
+                        notificationManager.showingNotificationSettingsAlert = true
+                    }
+                }
+            ))
+            .toggleStyle(SwitchToggleStyle(tint: .purple))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.regularMaterial)
+        )
+        .alert("Notifications", isPresented: $notificationManager.showingNotificationSettingsAlert) {
+            Button("Open Settings") {
+                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsUrl)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Notifications can be enabled and disabled in your iPhone Settings.")
+        }
+        .onChange(of: notificationManager.showingNotificationSettingsAlert) { oldValue, newValue in
+
+        }
+    }
+}

@@ -200,7 +200,7 @@ struct NotificationRowView: View {
                         .font(.system(size: 16, weight: .medium))
                 }
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(notification.title)
                             .font(.system(size: 16, weight: notification.isRead ? .regular : .semibold))
@@ -219,7 +219,8 @@ struct NotificationRowView: View {
                     Text(notification.body)
                         .font(.system(size: 14))
                         .foregroundColor(ThemeColors.secondaryText)
-                        .lineLimit(2)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
                     
                     HStack {

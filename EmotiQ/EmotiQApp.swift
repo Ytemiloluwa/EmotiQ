@@ -54,13 +54,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
         // Use centralized OneSignal configuration
         OneSignal.initialize(Config.oneSignalAppID, withLaunchOptions: launchOptions)
-
-        OneSignalService.shared.requestNotificationPermission()
-
-
-        OneSignal.Notifications.requestPermission({ accepted in
-
-        }, fallbackToSettings: false)
         
         // Clean up duplicate emotional data on app launch
         PersistenceController.shared.cleanupDuplicateEmotionalData()

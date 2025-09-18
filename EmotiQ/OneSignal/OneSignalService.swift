@@ -161,7 +161,7 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
                     self.forceSyncPermissionStatus()
                 }
             }
-        }, fallbackToSettings: true)
+        }, fallbackToSettings: false)
     }
     
     func setupUserTags() {
@@ -969,15 +969,22 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
     
     // MARK: - Streak Maintenance Reminder
     private func checkStreakMaintenance() async {
-        // Only send streak reminders if user has granted notification permission
-        guard OneSignal.Notifications.permission && OneSignal.User.pushSubscription.optedIn else {
         
+        // Only send streak reminders if user has granted notification permission
+        guard OneSignal.Notifications.permission && OneSignal.User.pushSubscription.optedIn else { return }
+        
+        // Check if this is a fresh install (no previous app usage recorded)
+        let lastAppUsage = UserDefaults.standard.object(forKey: "last_app_usage") as? Date
+        let isFreshInstall = (lastAppUsage == nil)
+        
+        if isFreshInstall {
+            // Set initial timestamp for future streak checks
+            UserDefaults.standard.set(Date(), forKey: "last_app_usage")
             return
         }
         
         // Check if user hasn't used app for 24+ hours
-        let lastAppUsage = UserDefaults.standard.object(forKey: "last_app_usage") as? Date ?? Date.distantPast
-        let hoursSinceLastUsage = Date().timeIntervalSince(lastAppUsage) / 3600
+        let hoursSinceLastUsage = Date().timeIntervalSince(lastAppUsage!) / 3600
         
         // Update last app usage timestamp
         UserDefaults.standard.set(Date(), forKey: "last_app_usage")
@@ -985,6 +992,8 @@ class OneSignalService: NSObject, ObservableObject, OSNotificationClickListener,
         // Send streak reminder if user hasn't used app for 24+ hours
         if hoursSinceLastUsage >= 24 {
             await sendStreakMaintenanceReminder()
+        } else {
+
         }
     }
     

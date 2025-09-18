@@ -107,19 +107,6 @@ struct MainTabView: View {
         } message: {
             Text("This feature requires a Pro/Premium subscription. Upgrade now to unlock unlimited access to EmotiQ's Emotional coaching features.")
         }
-        .alert("Open Settings", isPresented: $notificationManager.showingNotificationSettingsAlert) {
-            Button("Open Settings") {
-                HapticManager.shared.buttonPress(.primary)
-                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(settingsUrl)
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                HapticManager.shared.buttonPress(.subtle)
-            }
-        } message: {
-            Text("You currently have notifications turned off for this application. You can open Settings to re-enable them.")
-        }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToVoiceAnalysis)) { _ in
             // Navigate to voice analysis tab
             tabViewModel.selectTab(.voice)

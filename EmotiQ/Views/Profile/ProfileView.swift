@@ -282,6 +282,13 @@ struct SettingsListView: View {
                 action: { viewModel.openPrivacyPolicy() }
             )
             
+            // Terms of Use
+            FullWidthSettingsRow(
+                icon: "doc.plaintext",
+                title: "Terms of Use",
+                action: { viewModel.openTermsOfUse() }
+            )
+            
         }
         .background(
             RoundedRectangle(cornerRadius: 12)
@@ -466,6 +473,12 @@ class ProfileViewModel: ObservableObject {
             UIApplication.shared.open(url)
         }
 
+    }
+    
+    func openTermsOfUse() {
+        if let url = URL(string: "https://ytemiloluwa.github.io/Term-of-use.html") {
+            UIApplication.shared.open(url)
+        }
     }
     
     func requestAppReview() {

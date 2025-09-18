@@ -66,7 +66,7 @@ class OneSignalNotificationManager: ObservableObject {
     
     // MARK: - Permission Management
     private func checkNotificationPermissionOnLaunch() {
-   
+        
         
         // Don't show dialog immediately on fresh installs
         // Let the subscription state monitoring handle permission detection
@@ -74,7 +74,7 @@ class OneSignalNotificationManager: ObservableObject {
     }
     
     private func performDelayedPermissionCheck() {
-
+        
         
         // Force sync permission status
         oneSignalService.forceSyncPermissionStatus()
@@ -91,14 +91,14 @@ class OneSignalNotificationManager: ObservableObject {
         // Only show alert if permission is actually denied AND OneSignal is ready
         // This prevents showing the dialog on fresh installs before OneSignal is ready
         if oneSignalService.isFreshInstall() || (!currentStatus && !optedIn) {
-
-            // Don't show alert on fresh installs until OneSignal is fully initialized
-        } else if !currentStatus {
             
-            showingNotificationSettingsAlert = true
         } else {
-       
-            showingNotificationSettingsAlert = false
+            
+            if showingNotificationSettingsAlert {
+                
+                showingNotificationSettingsAlert = false
+            }
+            
         }
         
         // Force refresh OneSignal subscription status
@@ -108,29 +108,28 @@ class OneSignalNotificationManager: ObservableObject {
     }
     
     private func refreshOneSignalSubscription() {
-    
         
-        // Force OneSignal to re-evaluate permission and subscription
-        OneSignal.Notifications.clearAll()
+        let currentPermission = OneSignal.Notifications.permission
         
-        // Re-request permission to ensure subscription is properly enabled
-        OneSignal.Notifications.requestPermission({ accepted in
-
-            Task { @MainActor in
-                self.notificationPermissionGranted = accepted
-                if accepted {
-                    self.showingNotificationSettingsAlert = false
-                    
-                }
+        Task { @MainActor in
+            self.notificationPermissionGranted = currentPermission
+            if currentPermission && self.showingNotificationSettingsAlert {
+                self.showingNotificationSettingsAlert = false
+                
             }
-        }, fallbackToSettings: false)
+        }
     }
     
     // MARK: - Public Methods
     
     func dismissSettingsAlert() {
-    
-        showingNotificationSettingsAlert = false
+        
+        if showingNotificationSettingsAlert {
+            
+            showingNotificationSettingsAlert = false
+            
+        }
+        
     }
     
     func checkCurrentPermissionStatus() {
@@ -155,34 +154,22 @@ class OneSignalNotificationManager: ObservableObject {
         
         // Observe permission status
         oneSignalService.$notificationPermissionStatus
+            .removeDuplicates()
             .sink { [weak self] status in
                 let isGranted = (status == .authorized)
                 self?.notificationPermissionGranted = isGranted
                 
-            
                 
                 // Only show settings alert if OneSignal is ready but permission is denied
                 let subscriptionId = OneSignal.User.pushSubscription.id
                 let optedIn = OneSignal.User.pushSubscription.optedIn
                 
                 if isGranted {
-          
-                    self?.showingNotificationSettingsAlert = false
-                } else if !(subscriptionId?.isEmpty ?? true) && !optedIn {
-                    // OneSignal is ready but user hasn't opted in
                     
-                    // Add a small delay to prevent alert conflicts
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        Task { @MainActor in
-                            
-                            if !(self?.showingNotificationSettingsAlert ?? false) {
-                                self?.showingNotificationSettingsAlert = true
-                            }
-                        }
+                    if self?.showingNotificationSettingsAlert == true {
+                        
+                        self?.showingNotificationSettingsAlert = false
                     }
-                } else {
-                    // OneSignal not ready yet, don't show alert
-
                 }
             }
             .store(in: &cancellables)
@@ -219,11 +206,14 @@ class OneSignalNotificationManager: ObservableObject {
                     DispatchQueue.main.async {
                         self?.oneSignalService.notificationPermissionStatus = .authorized
                         self?.notificationPermissionGranted = true
-                        self?.showingNotificationSettingsAlert = false
+                        if self?.showingNotificationSettingsAlert == true {
+                            
+                            self?.showingNotificationSettingsAlert = false
+                        }
+                        
                         
                         // Trigger user setup and welcome notification only once
                         if !(self?.hasTriggeredWelcomeNotification ?? false) {
-               
                             self?.oneSignalService.setupUserTags()
                             self?.oneSignalService.scheduleInitialWelcomeNotification()
                         } else {
@@ -233,17 +223,7 @@ class OneSignalNotificationManager: ObservableObject {
                             self?.subscriptionMonitorTimer = nil
                         }
                     }
-                } else if !(subscriptionId?.isEmpty ?? true) && !optedIn {
-                    // OneSignal is ready but user hasn't opted in - show settings alert
-                    // Add a small delay to prevent alert conflicts
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        Task { @MainActor in
-                            if !(self?.showingNotificationSettingsAlert ?? false) {
-                                self?.showingNotificationSettingsAlert = true
-                            }
-                        }
-
-                    }
+                } else {
                     
                 }
             }
@@ -306,7 +286,7 @@ class OneSignalNotificationManager: ObservableObject {
     private func initializeCampaignSystem() async {
         // Prevent multiple initializations
         guard !hasInitializedCampaigns else {
-           
+            
             return
         }
         
@@ -323,7 +303,7 @@ class OneSignalNotificationManager: ObservableObject {
         
         // Set up re-engagement campaigns
         await setupReEngagementCampaigns()
-    
+        
     }
     
     private func setupUserSegmentation() async {
@@ -640,7 +620,7 @@ class OneSignalNotificationManager: ObservableObject {
         )
         
         activeCampaigns.append(reEngagementCampaign)
-    
+        
     }
     
     private func getRichMediaForEmotion(_ emotion: EmotionType) -> CampaignRichMedia? {
@@ -1279,7 +1259,7 @@ class OneSignalNotificationManager: ObservableObject {
                 if metrics.engagementRate < 0.1 && metrics.totalSent > 10 {
                     // Very low engagement with sufficient data, pause campaign
                     campaign.isActive = false
-        
+                    
                 }
             }
         }
@@ -1326,7 +1306,7 @@ class OneSignalNotificationManager: ObservableObject {
     
     private func adjustCampaignTiming(_ campaign: NotificationCampaign) async {
         // Implement timing adjustment logic based on user behavior
-   
+        
     }
     
     private func adjustCampaignContent(_ campaign: NotificationCampaign) async {
