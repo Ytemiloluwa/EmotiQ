@@ -50,6 +50,9 @@ struct ProfileView: View {
             .sheet(isPresented: $showingSubscriptionPaywall) {
                 SubscriptionPaywallView()
             }
+            .sheet(isPresented: $viewModel.showingSubscriptionManagement) {
+                SubscriptionManagementSheet()
+            }
             .navigationDestination(isPresented: $viewModel.showingCompletedGoals) {
                 CompletedGoalView()
             }
@@ -239,6 +242,16 @@ struct SettingsListView: View {
                 action: upgradeAction
             )
             
+            // Subscription Management (if active)
+            if subscriptionService.hasActiveSubscription {
+                FullWidthSettingsRow(
+                    icon: "gear",
+                    title: "Manage Subscription",
+                    subtitle: "Cancel or modify your subscription",
+                    action: { viewModel.showingSubscriptionManagement = true }
+                )
+            }
+            
             // Edit Profile
             FullWidthSettingsRow(
                 icon: "person.circle",
@@ -387,6 +400,7 @@ class ProfileViewModel: ObservableObject {
     @Published var showingAppSettings = false
     @Published var showingSupportInfo = false
     @Published var showingCompletedGoals = false
+    @Published var showingSubscriptionManagement = false
     
     private let biometricService = BiometricAuthenticationService()
     private let persistenceController = PersistenceController.shared
@@ -856,6 +870,177 @@ extension Array where Element: Hashable {
             counts[element, default: 0] += 1
         }
         return counts.max(by: { $0.value < $1.value })?.key
+    }
+}
+
+// MARK: - Subscription Management Sheet
+struct SubscriptionManagementSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var subscriptionService = SubscriptionService.shared
+    @State private var isRestoring = false
+    @State private var showSuccessAlert = false
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
+    @State private var cancellables = Set<AnyCancellable>()
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 16) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(.purple)
+                    
+                    Text("Manage Subscription")
+                        .font(.title)
+                        .fontWeight(.bold)
+                    
+                    Text("Manage your EmotiQ subscription")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 20)
+                
+                // Current Plan Info
+                VStack(spacing: 16) {
+                    Text("Current Plan")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    
+                    Text(subscriptionService.currentSubscriptionTier?.displayName ?? "Premium")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.purple)
+                    
+                    Text("Auto-renewing subscription")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.regularMaterial)
+                )
+                
+                // Management Options
+                VStack(spacing: 12) {
+                    Button(action: {
+                        // Open App Store subscription management
+                        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "gear")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Manage in App Store")
+                                .font(.system(size: 16, weight: .medium))
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 14))
+                        }
+                        .foregroundColor(.primary)
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.regularMaterial)
+                        )
+                    }
+                    
+                    Button(action: {
+                        restorePurchases()
+                    }) {
+                        HStack {
+                            if isRestoring {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .primary))
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 16, weight: .medium))
+                            }
+                            Text(isRestoring ? "Restoring..." : "Restore Purchases")
+                                .font(.system(size: 16, weight: .medium))
+                            Spacer()
+                        }
+                        .foregroundColor(.primary)
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.regularMaterial)
+                        )
+                    }
+                    .disabled(isRestoring)
+                }
+                
+                Spacer()
+                
+                // Important Notice
+                VStack(spacing: 8) {
+                    Text("Important")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    
+                    Text("To cancel or modify your subscription, use the App Store subscription management. Changes will take effect at the end of your current billing period.")
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.orange.opacity(0.1))
+                )
+            }
+            .padding(.horizontal, 20)
+            .navigationTitle("Subscription")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .alert("Success", isPresented: $showSuccessAlert) {
+                Button("OK") { }
+            } message: {
+                Text("Your purchases have been restored successfully!")
+            }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage)
+            }
+        }
+    }
+    
+    private func restorePurchases() {
+        isRestoring = true
+        
+        RevenueCatService.shared.restorePurchases()
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    isRestoring = false
+                    if case .failure(let error) = completion {
+                        errorMessage = error.localizedDescription
+                        showErrorAlert = true
+                    }
+                },
+                receiveValue: { customerInfo in
+                    isRestoring = false
+                    if !customerInfo.activeSubscriptions.isEmpty {
+                        showSuccessAlert = true
+                        
+                    } else {
+                        errorMessage = "No previous purchases found to restore."
+                        showErrorAlert = true
+                    }
+                }
+            )
+            .store(in: &cancellables)
     }
 }
 

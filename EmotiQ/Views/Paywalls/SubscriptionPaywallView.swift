@@ -159,10 +159,17 @@ struct SubscriptionPaywallView: View {
                         .padding(.horizontal, 24)
                         
                         // Apple-required disclosure
-                        Text("Subscription auto‑renews unless canceled at least 24 hours before the end of the current period. Manage or cancel in Account Settings after purchase.")
-                            .font(.caption)
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(.white.opacity(0.8))
+                        VStack(spacing: 8) {
+                            Text("Auto-renewing subscription")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            
+                            Text("Subscription auto‑renews unless canceled at least 24 hours before the end of the current period. Manage or cancel in Account Settings after purchase.")
+                                .font(.caption2)
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
                         .padding(.horizontal, 24)
                         
                         // Secondary Actions
@@ -259,9 +266,15 @@ struct PackageCardView: View {
                             .fontWeight(.bold)
                             .foregroundColor(isSelected ? Color(hex: Config.UI.primaryPurple) : .white)
                         
-                        Text(package.storeProduct.localizedPriceString + "/month")
-                            .font(.headline)
-                            .foregroundColor(isSelected ? Color(hex: Config.UI.primaryPurple) : .white.opacity(0.8))
+                        VStack(alignment: .leading, spacing: 2) {
+                                 Text(package.storeProduct.localizedPriceString + getSubscriptionPeriod(package))
+                                     .font(.headline)
+                                     .foregroundColor(isSelected ? Color(hex: Config.UI.primaryPurple) : .white.opacity(0.8))
+                                 
+                                 Text("Auto-renewing subscription")
+                                     .font(.caption)
+                                     .foregroundColor(isSelected ? Color(hex: Config.UI.primaryPurple).opacity(0.7) : .white.opacity(0.6))
+                             }
                     }
                     
                     Spacer()
@@ -312,6 +325,22 @@ struct PackageCardView: View {
         .scaleEffect(isSelected ? 1.02 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
+    
+    private func getSubscriptionPeriod(_ package: RevenueCat.Package) -> String {
+        let productId = package.storeProduct.productIdentifier
+        
+        if productId.contains("monthly") {
+            return "/month"
+        } else if productId.contains("yearly") || productId.contains("annual") {
+            return "/year"
+        } else if productId.contains("weekly") {
+            return "/week"
+        } else {
+            // Default to monthly if unclear
+            return "/month"
+        }
+    }
+    
     
     private func getFeaturesForPackage(_ package: RevenueCat.Package) -> [String] {
         let productId = package.storeProduct.productIdentifier
