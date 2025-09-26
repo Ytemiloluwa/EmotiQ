@@ -139,11 +139,14 @@ class InsightsViewModel: ObservableObject {
             return
         }
         
+        weeklyCheckIns = Int(user.weeklyCheckInsCount)
+        currentStreak = Int(user.currentStreak)
+        
         // Load real emotional data from Core Data
         let emotionalData = loadEmotionalData(for: user)
         
         // Calculate insights from real data
-        calculateInsights(from: emotionalData)
+        calculateInsights(from: emotionalData, for: user)
     }
     
     private func loadEmotionalData(for user: User) -> [EmotionalDataEntity] {
@@ -164,19 +167,36 @@ class InsightsViewModel: ObservableObject {
         }
     }
     
-    private func calculateInsights(from emotionalData: [EmotionalDataEntity]) {
+    private func loadAllEmotionalData(for user: User) -> [EmotionalDataEntity] {
+        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+        
+        // Load ALL emotional data (no date filter)
+        request.predicate = NSPredicate(format: "user == %@", user)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+        
+        do {
+            let allData = try persistenceController.container.viewContext.fetch(request)
+            return allData
+        } catch {
+            return []
+        }
+    }
+    
+    private func calculateInsights(from emotionalData: [EmotionalDataEntity], for user: User) {
         guard !emotionalData.isEmpty else {
             resetToEmptyState()
             return
         }
         
-        // Calculate total check-ins
         totalCheckIns = emotionalData.count
         
         // Calculate weekly check-ins
         let calendar = Calendar.current
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         weeklyCheckIns = emotionalData.filter { $0.timestamp ?? Date() >= weekAgo }.count
+        
+        // Save weekly check-ins count to Core Data
+        user.weeklyCheckInsCount = Int32(weeklyCheckIns)
         
         // Calculate average mood
         let emotions = emotionalData.compactMap { entity -> EmotionCategory? in
@@ -189,8 +209,15 @@ class InsightsViewModel: ObservableObject {
             mostCommonEmotion = calculateMostCommonEmotion(from: emotions)
         }
         
-        // Calculate current streak
-        currentStreak = calculateCurrentStreak(from: emotionalData)
+        // Use persisted streak first; recompute as fallback
+        let persistedStreak = Int(user.currentStreak)
+        if persistedStreak > 0 {
+            currentStreak = persistedStreak
+        } else {
+            let allEmotionalData = loadAllEmotionalData(for: user)
+            currentStreak = calculateCurrentStreak(from: allEmotionalData)
+            user.currentStreak = Int32(currentStreak)
+        }
         
         // Generate trend data
         trendData = generateTrendData(from: emotionalData)
@@ -219,6 +246,8 @@ class InsightsViewModel: ObservableObject {
         // Calculate emotional valence and intensity
         emotionalValence = calculateEmotionalValence(from: emotions)
         averageIntensity = calculateAverageIntensity(from: emotionalData)
+        
+        persistenceController.save()
     }
     
     private func resetToEmptyState() {
@@ -268,13 +297,13 @@ class InsightsViewModel: ObservableObject {
         for data in sortedData {
             guard let timestamp = data.timestamp else { continue }
             
-            let dataDate = calendar.startOfDay(for: timestamp)
-            let expectedDate = calendar.startOfDay(for: currentDate)
+//            let dataDate = calendar.startOfDay(for: timestamp)
+//            let expectedDate = calendar.startOfDay(for: currentDate)
             
-            if calendar.isDate(dataDate, inSameDayAs: expectedDate) {
+            if calendar.isDate(timestamp, inSameDayAs: currentDate) {
                 streak += 1
                 currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate) ?? currentDate
-            } else if calendar.dateInterval(of: .day, for: dataDate)?.start ?? dataDate < expectedDate {
+            } else if timestamp < currentDate {
                 break
             }
         }

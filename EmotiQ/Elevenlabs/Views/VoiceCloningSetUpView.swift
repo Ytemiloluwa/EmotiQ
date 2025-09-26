@@ -1309,7 +1309,6 @@ struct VoiceCloningSetupView: View {
         }
         
         private func handleVoiceTestError(_ error: Error) {
-            // Log the technical error for debugging
             
             // Map technical errors to user-friendly messages
             let userFriendlyError: VoiceCloningError
@@ -1458,7 +1457,7 @@ struct VoiceCloningSetupView: View {
                 startNoiseAnalysisTimer()
                 
             } catch {
-                // Log the specific error for debugging
+            
                 
                 // Try to retry if we haven't exceeded max retries
                 if environmentCheckRetryCount < maxEnvironmentCheckRetries {

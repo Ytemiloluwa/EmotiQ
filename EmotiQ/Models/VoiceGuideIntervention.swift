@@ -23,7 +23,7 @@ struct VoiceGuidedIntervention: Identifiable, Codable {
     let backgroundColor: String
     
     var formattedDuration: String {
-        let minutes = Int(estimatedDuration / 60)
+        let minutes = Int(ceil(estimatedDuration / 60.0))
         return "\(minutes) min"
     }
     
@@ -124,7 +124,7 @@ extension VoiceGuidedIntervention {
             title: "4-7-8 Breathing",
             description: "A powerful technique for relaxation and sleep",
             category: .breathing,
-            estimatedDuration: 240, // 4 minutes
+            estimatedDuration: 120, // 2 minutes
             steps: [
                 InterventionStep(
                     title: "Preparation",
@@ -184,7 +184,7 @@ extension VoiceGuidedIntervention {
             title: "Box Breathing",
             description: "Equal breathing for focus and balance",
             category: .breathing,
-            estimatedDuration: 300, // 5 minutes
+            estimatedDuration: 120, // 5 minutes
             steps: [
                 InterventionStep(
                     title: "Setup",
@@ -246,7 +246,7 @@ extension VoiceGuidedIntervention {
             title: "Gratitude Reflection",
             description: "Shift your focus to positive aspects of life",
             category: .mindfulness, // emotional -> mindfulness
-            estimatedDuration: 180, // 3 minutes
+            estimatedDuration: 120, // 3 minutes
             steps: [
                 InterventionStep(
                     title: "Centering",
@@ -306,7 +306,7 @@ extension VoiceGuidedIntervention {
             title: "Self-Compassion Check",
             description: "Treat yourself with kindness and understanding",
             category: .mindfulness, // emotional -> mindfulness
-            estimatedDuration: 240, // 4 minutes
+            estimatedDuration: 120, // 4 minutes
             steps: [
                 InterventionStep(
                     title: "Recognition",

@@ -268,7 +268,7 @@ class AudioProcessingService: NSObject, ObservableObject {
         }
         
         // Add timer to main run loop
-        //RunLoop.main.add(audioLevelTimer!, forMode: .common)
+        RunLoop.main.add(audioLevelTimer!, forMode: .common)
     }
     
     private func updateAudioLevelsArray(with newLevel: Float) {

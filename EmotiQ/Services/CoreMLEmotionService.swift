@@ -953,29 +953,35 @@ class CoreMLEmotionService: ObservableObject {
     private func calculateAdvancedDisgustScore(spectralCentroid: Float, zeroCrossingRate: Float, mfccSkewness: Float, prosodyFeatures: ProsodyFeatures, voiceQuality: VoiceQuality) -> Double {
         var score: Double = 0.0
         
-        // Lower spectral centroid (darker tone)
-        if spectralCentroid < 1000 {
-            score += 0.3
-        }
+        // Validate audio features before applying disgust thresholds
+        let isValidSpectralCentroid = spectralCentroid > 0 && spectralCentroid < 10000
+        let isValidSpeakingRate = prosodyFeatures.speakingRate > 0 && prosodyFeatures.speakingRate < 10
         
-        // Low zero crossing rate (monotone)
-        if zeroCrossingRate < 0.2 {
+        // Only apply disgust thresholds if audio features are valid
+        if isValidSpectralCentroid {
+            // Lower spectral centroid (darker tone) - adjusted threshold
+            if spectralCentroid < 800 {
+                score += 0.3
+            }
+    
+            if spectralCentroid < 600 {
+                score += 0.15
+            }
+        }
+        if zeroCrossingRate < 0.1 {
+            
             score += 0.25
         }
-        
-        // Negative MFCC skewness (asymmetric distribution)
-        if mfccSkewness < -0.5 {
+        // Negative MFCC skewness (asymmetric distribution) - adjusted threshold
+        if mfccSkewness < -1.0 {
             score += 0.2
         }
         
-        // Very low spectral centroid
-        if spectralCentroid < 800 {
-            score += 0.15
-        }
-        
-        // Low speaking rate
-        if prosodyFeatures.speakingRate < 0.5 {
-            score += 0.1
+        if isValidSpeakingRate {
+            // Low speaking rate - adjusted threshold
+            if prosodyFeatures.speakingRate < 0.3 {
+                score += 0.1
+            }
         }
         
         return min(score, 1.0)

@@ -23,9 +23,14 @@ class VoiceGuidedInterventionService: ObservableObject {
     @Published var playbackProgress: Double = 0.0
     @Published var currentInterventionType: InterventionType?
     @Published var currentScript: InterventionScript?
+    @Published var currentTime: TimeInterval = 0
+    @Published var duration: TimeInterval = 0
+    @Published var audioLevel: Float = 0
     
     private var audioPlayer: AVAudioPlayer?
+    private var audioDelegate: AudioPlayerDelegate?
     private var playbackTimer: Timer?
+    
     private let elevenLabsService = ElevenLabsService.shared
     private var cancellables = Set<AnyCancellable>()
     private let cacheManager = AudioCacheManager.shared
@@ -99,6 +104,8 @@ class VoiceGuidedInterventionService: ObservableObject {
         playbackProgress = 1.0
         currentInterventionType = nil
         currentScript = nil
+        isPlaying = false
+        stopPlaybackTimer()
         HapticManager.shared.notification(.success)
     }
     
@@ -109,14 +116,14 @@ class VoiceGuidedInterventionService: ObservableObject {
             let userVoiceId = elevenLabsService.userVoiceProfile?.id
             
             guard let finalVoiceId = userVoiceId else {
-
+                
                 throw ElevenLabsError.noVoiceProfile
             }
             
             
             // First check cache - if found, play immediately (zero credits)
             if let cachedURL = await cacheManager.getCachedAudio(for: segment.text, emotion: segment.emotion, voiceId: finalVoiceId) {
-
+                
                 try await playAudio(from: cachedURL)
                 return
             }
@@ -126,9 +133,9 @@ class VoiceGuidedInterventionService: ObservableObject {
             
             // Check if already generating this audio (prevent duplicate requests)
             if let task = inFlight[cacheKey] {
-
+                
                 let url = try await task.value
-   
+                
                 try await playAudio(from: url)
                 return
             }
@@ -148,7 +155,7 @@ class VoiceGuidedInterventionService: ObservableObject {
                     )
                 )
                 let cachedURL = try await self.cacheManager.cacheAudio(data: audioData, text: segment.text, emotion: segment.emotion, voiceId: finalVoiceId)
-     
+                
                 return cachedURL
             }
             inFlight[cacheKey] = task
@@ -158,18 +165,18 @@ class VoiceGuidedInterventionService: ObservableObject {
             try await playAudio(from: url)
             
         } catch ElevenLabsError.noVoiceProfile {
-
+            
             throw ElevenLabsError.noVoiceProfile
             
         } catch {
-
+            
             throw error
         }
     }
-
+    
     // MARK: - Prewarm Cache
     private func prewarm(_ script: InterventionScript) async {
-
+        
         var cachedCount = 0
         var generatedCount = 0
         
@@ -181,11 +188,11 @@ class VoiceGuidedInterventionService: ObservableObject {
         }
         
         for (index, segment) in script.segments.enumerated() {
-
+            
             // Skip if already cached
             if await cacheManager.getCachedAudio(for: segment.text, emotion: segment.emotion, voiceId: finalVoiceId) != nil {
                 cachedCount += 1
-
+                
                 continue
             }
             
@@ -198,7 +205,7 @@ class VoiceGuidedInterventionService: ObservableObject {
             }
             
             // Generate and cache audio
-
+            
             let task = Task<URL, Error> { [weak self] in
                 guard let self = self else { throw VoiceGuidedInterventionError.invalidScript }
                 let audioData = try await self.elevenLabsService.generateSpeech(
@@ -219,7 +226,7 @@ class VoiceGuidedInterventionService: ObservableObject {
             _ = try? await task.value
             inFlight.removeValue(forKey: cacheKey)
             generatedCount += 1
-    
+            
         }
         
     }
@@ -229,9 +236,13 @@ class VoiceGuidedInterventionService: ObservableObject {
         return try await withCheckedThrowingContinuation { continuation in
             do {
                 audioPlayer = try AVAudioPlayer(contentsOf: url)
-                audioPlayer?.delegate = AudioPlayerDelegate { [weak self] success in
+                let delegate = AudioPlayerDelegate { [weak self] success in
                     DispatchQueue.main.async {
                         self?.isPlaying = false
+                        self?.stopPlaybackTimer()
+                        self?.currentTime = 0
+                        self?.duration = 0
+                        self?.audioLevel = 0
                         if success {
                             continuation.resume()
                         } else {
@@ -239,16 +250,35 @@ class VoiceGuidedInterventionService: ObservableObject {
                         }
                     }
                 }
-                
+                audioDelegate = delegate
+                audioPlayer?.delegate = delegate
+                audioPlayer?.isMeteringEnabled = true
                 isPlaying = true
                 audioPlayer?.play()
-                
+                startPlaybackTimer()
             } catch {
                 continuation.resume(throwing: error)
             }
         }
     }
-
+    private func startPlaybackTimer() {
+        stopPlaybackTimer()
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self = self, let player = self.audioPlayer else { return }
+            player.updateMeters()
+            self.currentTime = player.currentTime
+            self.duration = max(player.duration, 0)
+            let power = player.averagePower(forChannel: 0)
+            let level = max(0, min(1, pow(10, power / 20)))
+            self.audioLevel = level
+        }
+        if let t = playbackTimer { RunLoop.main.add(t, forMode: .common) }
+    }
+    
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
     
     /// Pause current playback
     func pause() {
@@ -291,7 +321,7 @@ class VoiceGuidedInterventionService: ObservableObject {
     
     /// Play a single segment with caching (used by VoiceGuidedInterventionView)
     func playSegment(text: String, emotion: EmotionType) async throws {
-
+        
         let segment = InterventionSegment(
             text: text,
             emotion: .neutral, // Use .neutral to match prewarm cache
@@ -305,7 +335,7 @@ class VoiceGuidedInterventionService: ObservableObject {
     
     /// Prewarm cache for a VoiceGuidedIntervention (used by VoiceGuidedInterventionView)
     func prewarmCache(for intervention: VoiceGuidedIntervention) async throws {
-
+        
         
         // Convert VoiceGuidedIntervention to InterventionScript for prewarming
         let segments = intervention.voicePrompts.map { prompt in
@@ -327,7 +357,7 @@ class VoiceGuidedInterventionService: ObservableObject {
         )
         
         await prewarm(script)
-
+        
     }
 }
 

@@ -63,15 +63,15 @@ struct CoachingView: View {
                         )
                         
                         // Recommendations
-                        RecommendationsSection(
+                 /*       RecommendationsSection(
                             onVoiceGuidedIntervention: { //intervention in
                                 // Navigate to the selection view instead of a specific intervention
                                 showingVoiceGuidedIntervention = true
                             }
-                        )
+                      )  */
                         
                         // Progress Overview
-                        CoachingProgressOverviewSection()
+                        //CoachingProgressOverviewSection()
                         
                         Spacer(minLength: 100)
                     }
@@ -176,8 +176,8 @@ struct QuickActionsSection: View {
                 
                 // Enhanced Personal Coaching with Voice Integration
                 VoiceQuickActionCard(
-                    title: "Personal Coaching",
-                    description: hasVoiceProfile ? "Listen to Affirmations in your voice" : "Listen to Affirmations in your voice",
+                    title: "Voice Affrimations",
+                    description: hasVoiceProfile ? "Listen to Affirmations in your voice" : "Set up your voice for emotional impact",
                     icon: hasVoiceProfile ? "waveform.circle.fill" : "waveform.circle",
                     color: .purple,
                     hasVoiceFeature: true,

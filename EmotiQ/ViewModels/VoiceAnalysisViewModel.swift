@@ -51,65 +51,6 @@ class VoiceAnalysisViewModel: ObservableObject {
         checkDailyUsage()
     }
     
-    // Test function - add to VoiceAnalysisViewModel
-    func testEmotionCampaign() {
-        let testResult = EmotionAnalysisResult(
-            primaryEmotion: .anger, // Test with anger for immediate trigger
-            subEmotion: .confusion, // Default sub-emotion
-            intensity: .high,
-            confidence: 0.95, // High confidence to trigger campaign
-            emotionScores: [.anger: 0.95, .sadness: 0.02, .fear: 0.01, .joy: 0.01, .surprise: 0.01],
-            subEmotionScores: [SubEmotion.apprehension: 0.95, SubEmotion.distaste: 0.03, SubEmotion.disappointment: 0.02],
-            audioQuality: .good,
-            sessionDuration: 5.0,
-            audioFeatures: nil
-        )
-        
-        // Post notification to trigger campaign
-        NotificationCenter.default.post(
-            name: .emotionalDataSaved,
-            object: testResult
-        )
-        
-       
-    }
-    
-    // Test predictive intervention
-    func testPredictiveCampaign() async {
-        let predictions = await EmotionalInterventionPredictor().predictFutureEmotionalNeeds(
-            currentEmotion: .neutral,
-            confidence: 0.8,
-            timeOfDay: Calendar.current.component(.hour, from: Date()),
-            dayOfWeek: Calendar.current.component(.weekday, from: Date())
-        )
-        
-        
-        
-        // This should schedule notifications for predicted emotional needs
-    }
-    
-    // Test achievement celebration
-    func testAchievementCampaign() {
-        let testAchievement = Achievement(
-            id: "test_achievement",
-            title: "First Voice Analysis",
-            description: "You completed your first emotional voice analysis!",
-            type: .milestone
-        )
-        
-        NotificationCenter.default.post(
-            name: .achievementUnlocked,
-            object: testAchievement
-        )
-        
-   
-    }
-    
-    // Removed test method that was causing duplicate notifications
-    
-
-
-    
     // MARK: - Public Methods
     
     /// Starts voice recording with real-time monitoring
@@ -151,6 +92,8 @@ class VoiceAnalysisViewModel: ObservableObject {
         // Update UI state
         isRecording = false
         isProcessing = true
+        audioLevel = 0
+        audioLevelsArray = Array(repeating: 0.0, count: 20)
         stopRecordingTimer()
         
         do {
@@ -198,6 +141,7 @@ class VoiceAnalysisViewModel: ObservableObject {
         
         recordingDuration = 0
         audioLevel = 0
+        audioLevelsArray = Array(repeating: 0.0, count: 20)
         currentRecordingURL = nil
         
     
@@ -377,10 +321,6 @@ class VoiceAnalysisViewModel: ObservableObject {
         // Save to Core Data
         persistenceController.saveEmotionalData(emotionalData, for: user)
         
-    
-        if let features = voiceFeatures {
-
-        }
     }
     
     private func startRecordingTimer() {

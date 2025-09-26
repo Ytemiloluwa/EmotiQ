@@ -27,11 +27,20 @@ struct PersistenceController {
             // Configure CloudKit if enabled
             if Config.CoreData.enableCloudKit {
                 container.persistentStoreDescriptions.forEach { storeDescription in
+                    storeDescription.shouldMigrateStoreAutomatically = true
+                    storeDescription.shouldInferMappingModelAutomatically = true
                     storeDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
                     storeDescription.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
                     
                     // CloudKit configuration
                     //storeDescription.setOption(true as NSNumber, forKey: NSPersistentCloudKitContainerOptionsKey)
+                }
+            }
+            // Ensure migration is enabled even if cloudkit is disabled.
+            if !Config.CoreData.enableCloudKit {
+                container.persistentStoreDescriptions.forEach { storeDescription in
+                    storeDescription.shouldMigrateStoreAutomatically = true
+                    storeDescription.shouldInferMappingModelAutomatically = true
                 }
             }
         }
@@ -273,9 +282,136 @@ struct PersistenceController {
 
             }
         }
+        updateUserStatsOnCheckIn(user, checkInDate: emotionalData.timestamp)
+        updateWeeklyCheckInsCount(for: user)
         
         save()
     
+    }
+    
+    private func updateUserStatsOnCheckIn(_ user: User, checkInDate: Date) {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: checkInDate)
+            let last = user.lastCheckInDate.map { calendar.startOfDay(for: $0) }
+            
+            if let last = last {
+                if calendar.isDate(last, inSameDayAs: today) {
+                    // Same day: keep streak unchanged
+                } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), calendar.isDate(last, inSameDayAs: yesterday) {
+                    user.currentStreak = Int32(max(Int(user.currentStreak) + 1, 1))
+                } else {
+                    user.currentStreak = 1
+                }
+            } else {
+                user.currentStreak = 1
+            }
+            
+            user.totalCheckIns = Int32(max(Int(user.totalCheckIns) + 1, 1))
+            user.lastCheckInDate = checkInDate
+        }
+        
+        // MARK: - Derived Stats Recalculation (idempotent)
+        func recalculateUserStats(for user: User) {
+            let context = container.viewContext
+            let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "user == %@", user)
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+            
+            do {
+                let emotionalData = try context.fetch(request)
+                user.totalCheckIns = Int32(emotionalData.count)
+                user.lastCheckInDate = emotionalData.first?.timestamp
+                user.currentStreak = Int32(calculateCurrentStreak(from: emotionalData))
+                updateWeeklyCheckInsCount(for: user)
+                save()
+            } catch {
+
+            }
+        }
+        
+        func updateWeeklyCheckInsCount(for user: User) {
+            let calendar = Calendar.current
+            let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+            
+            let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@", user, weekAgo as NSDate)
+            
+            do {
+                let weeklyData = try container.viewContext.fetch(request)
+                user.weeklyCheckInsCount = Int32(weeklyData.count)
+                
+            } catch {
+
+            }
+        }
+    
+    private func calculateCurrentStreak(from emotionalData: [EmotionalDataEntity]) -> Int {
+            let calendar = Calendar.current
+            let sortedData = emotionalData.sorted { ($0.timestamp ?? Date()) > ($1.timestamp ?? Date()) }
+            var streak = 0
+            var currentDate = Date()
+            for data in sortedData {
+                guard let timestamp = data.timestamp else { continue }
+                let dataDate = calendar.startOfDay(for: timestamp)
+                let expectedDate = calendar.startOfDay(for: currentDate)
+                if calendar.isDate(dataDate, inSameDayAs: expectedDate) {
+                    streak += 1
+                    currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate) ?? currentDate
+                } else if calendar.dateInterval(of: .day, for: dataDate)?.start ?? dataDate < expectedDate {
+                    break
+                }
+            }
+            return streak
+        }
+    
+    // MARK: - Intervention Streak Backfill
+    func backfillInterventionStreaksIfNeeded() {
+        let flagKey = "intervention_streak_backfill_v1"
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: flagKey) { return }
+        let context = container.viewContext
+        let cal = Calendar.current
+        do {
+            let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
+            let all = try context.fetch(fetch)
+            guard !all.isEmpty else { defaults.set(true, forKey: flagKey); return }
+            // Group by interventionTitle (fallback to title)
+            var titleToDates: [String: [Date]] = [:]
+            for item in all {
+                let title = item.interventionTitle ?? item.title ?? ""
+                guard !title.isEmpty, let d = item.completedAt else { continue }
+                titleToDates[title, default: []].append(d)
+            }
+            let now = Date()
+            for (title, dates) in titleToDates {
+                // Compute streak from dates
+                let days: Set<Date> = Set(dates.map { cal.startOfDay(for: $0) })
+                guard let mostRecent = days.max() else { continue }
+                var cursor = cal.startOfDay(for: now)
+                if !days.contains(cursor) { cursor = mostRecent }
+                var streak = 0
+                while days.contains(cursor) {
+                    streak += 1
+                    guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
+                    cursor = prev
+                }
+                // Upsert InterventionStreakEntity
+                let req: NSFetchRequest<InterventionStreakEntity> = InterventionStreakEntity.fetchRequest()
+                req.predicate = NSPredicate(format: "interventionTitle == %@", title)
+                req.fetchLimit = 1
+                let existing = try context.fetch(req).first
+                let record = existing ?? InterventionStreakEntity(context: context)
+                if existing == nil { record.interventionTitle = title }
+                record.currentStreak = Int32(streak)
+                record.lastActiveDay = mostRecent
+                record.updatedAt = Date()
+            }
+            try context.save()
+            defaults.set(true, forKey: flagKey)
+
+        } catch {
+     
+        }
     }
     
     // MARK: - Data Cleanup

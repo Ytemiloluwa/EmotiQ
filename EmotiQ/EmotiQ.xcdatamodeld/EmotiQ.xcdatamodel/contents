@@ -130,6 +130,12 @@
         <attribute name="wasVoiceGuided" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="interventionCompletions" inverseEntity="User"/>
     </entity>
+    <entity name="InterventionStreakEntity" representedClassName="InterventionStreakEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="currentStreak" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="interventionTitle" optional="YES" attributeType="String"/>
+        <attribute name="lastActiveDay" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
     <entity name="MilestoneEntity" representedClassName="MilestoneEntity" syncable="YES" codeGenerationType="class">
         <attribute name="completedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
@@ -171,6 +177,7 @@
     </entity>
     <entity name="User" representedClassName="User" syncable="YES" codeGenerationType="class">
         <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="currentStreak" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="dailyCheckInsUsed" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="email" optional="YES" attributeType="String"/>
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
@@ -178,10 +185,13 @@
         <attribute name="lastCheckInDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="name" optional="YES" attributeType="String"/>
         <attribute name="preferences" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer"/>
+        <attribute name="profileImageData" optional="YES" attributeType="Binary"/>
         <attribute name="subscriptionStatus" optional="YES" attributeType="String"/>
+        <attribute name="totalCheckIns" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="trialStartDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="weeklyCheckInsCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="weeklyCheckInsUsed" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="weekStartDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="trialStartDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <relationship name="affirmationFeedbacks" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="AffirmationFeedbackEntity" inverseName="user" inverseEntity="AffirmationFeedbackEntity"/>
         <relationship name="affirmations" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="AffirmationEntity" inverseName="user" inverseEntity="AffirmationEntity"/>
         <relationship name="behaviorData" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="BehaviorDataEntity" inverseName="user" inverseEntity="BehaviorDataEntity"/>

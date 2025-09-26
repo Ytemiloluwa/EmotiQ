@@ -122,6 +122,16 @@ struct MainTabView: View {
             tabViewModel.selectTab(.insights)
             HapticManager.shared.buttonPress(.primary)
         }
+        
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToCheckIns)) { _ in
+            // Navigate to profile tab and show check-ins
+            tabViewModel.selectTab(.profile)
+            HapticManager.shared.buttonPress(.primary)
+            // Post notification to trigger CheckInsListView navigation in ProfileView
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NotificationCenter.default.post(name: .showCheckInsFromProfile, object: nil)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("navigateToGoals"))) { _ in
             // Navigate to coaching tab (where goals are located)
             tabViewModel.selectTab(.coaching)
@@ -314,6 +324,8 @@ struct DashboardHeaderView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var notificationHistoryManager: NotificationHistoryManager
     @State private var currentTime = Date()
+    @Environment(\.calendar) private var envCalendar
+    @Environment(\.timeZone) private var envTimeZone
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -360,15 +372,24 @@ struct DashboardHeaderView: View {
         .onAppear {
             currentTime = Date()
         }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { date in
+            currentTime = date
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            currentTime = Date()
+        }
     }
     
     private var greetingText: String {
-        let hour = Calendar.current.component(.hour, from: currentTime)
-        switch hour {
-        case 5..<11: return "Good Morning"
-        case 12..<17: return "Good Afternoon"
-        case 17..<22: return "Good Evening"
-        default: return "Good Evening"
+        var calendar = envCalendar
+        calendar.timeZone = envTimeZone
+        let hour = calendar.component(.hour, from: currentTime)
+        if hour < 12 {
+            return "Good Morning"
+        } else if hour < 17 {
+            return "Good Afternoon"
+        } else {
+            return "Good Evening"
         }
     }
 }
@@ -568,7 +589,7 @@ struct EmotionTrendsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Voice check ins in the last 7 days")
+                Text(dynamicChartTitle(for: viewModel.weeklyTrendData))
                     .font(.headline)
                     .fontWeight(.semibold)
                 
@@ -576,13 +597,12 @@ struct EmotionTrendsCard: View {
                 
                 Button("View All") {
                     HapticManager.shared.buttonPress(.subtle)
-                    // Navigate to InsightsView
-                    NotificationCenter.default.post(name: .navigateToInsights, object: nil)
+                    // Navigate to CheckInsListView
+                    NotificationCenter.default.post(name: .navigateToCheckIns, object: nil)
                 }
                     .font(.caption)
                     .foregroundColor(.purple)
             }
-            
 
             // Line Chart with fallback
             if viewModel.weeklyTrendData.isEmpty {
@@ -611,6 +631,25 @@ struct EmotionTrendsCard: View {
     }
 }
 
+extension EmotionTrendsCard {
+    private func dynamicChartTitle(for data: [EmotionTrendData]) -> String {
+        guard !data.isEmpty else { return "Voice check-ins" }
+        let calendar = Calendar.current
+        let today = Date()
+        let dates = data.map { $0.date }
+        guard let minDate = dates.min(), let maxDate = dates.max() else { return "Voice check-ins" }
+        if let weekInterval = calendar.dateInterval(of: .weekOfYear, for: today) {
+            if minDate >= weekInterval.start && maxDate < weekInterval.end {
+                return "Voice check-ins this week"
+            }
+        }
+        if calendar.isDateInToday(maxDate) && data.count == 7 {
+            return "Voice check-ins in the last 7 days"
+        }
+        return "Voice check-ins in the last \(data.count) days"
+    }
+}
+
 struct EmotionLineChart: View {
     let data: [EmotionTrendData]
     
@@ -622,7 +661,7 @@ struct EmotionLineChart: View {
         let maxScale = max(ticks.last ?? 1, 1)
         let rowHeight: CGFloat = 100.0 / CGFloat(tickCount)
         
-        return HStack(alignment: .top, spacing: 8) {
+        return HStack(alignment: .top, spacing: 4) {
             // Y-axis labels
             VStack(alignment: .trailing, spacing: 0) {
                 ForEach(ticks.reversed(), id: \.self) { value in
@@ -630,9 +669,10 @@ struct EmotionLineChart: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .frame(height: rowHeight)
+                        .monospacedDigit()
                 }
             }
-            .frame(width: 20)
+            .frame(width: 22, alignment: .trailing)
             
             VStack(spacing: 8) {
                 // Chart area
@@ -648,7 +688,6 @@ struct EmotionLineChart: View {
                                 }
                             }
                         }
-                        .offset(y: -1) // Align grid lines with Y-axis labels
                         
                         
                         // Chart lines
@@ -658,12 +697,14 @@ struct EmotionLineChart: View {
                             let width = geometry.size.width
                             let height = geometry.size.height
                             let stepX = width / CGFloat(max(data.count - 1, 1))
+                            // Add top headroom (12%) to prevent max points from touching the top
+                            let paddedMax = max(CGFloat(maxScale) * 1.12, 1)
                             
                             // Check-ins line (blue)
                             let primaryPoints = data.enumerated().map { index, item in
                                 CGPoint(
                                     x: CGFloat(index) * stepX,
-                                    y: height - (CGFloat(item.checkInCount) / CGFloat(maxScale)) * height
+                                    y: height - (CGFloat(item.checkInCount) / paddedMax) * height
                                 )
                             }
                             
@@ -680,6 +721,7 @@ struct EmotionLineChart: View {
                             let width = geometry.size.width
                             let height = geometry.size.height
                             let stepX = width / CGFloat(max(data.count - 1, 1))
+                            let paddedMax = max(CGFloat(maxScale) * 1.12, 1)
                             
                             // Primary emotion points (circles)
                             Circle()
@@ -687,7 +729,7 @@ struct EmotionLineChart: View {
                                 .frame(width: 6, height: 6)
                                 .position(
                                     x: CGFloat(index) * stepX,
-                                    y: height - (CGFloat(item.checkInCount) / CGFloat(maxScale)) * height
+                                    y: height - (CGFloat(item.checkInCount) / paddedMax) * height
                                 )
                         
                         }
@@ -698,9 +740,11 @@ struct EmotionLineChart: View {
                 // X-axis labels (dates)
                 HStack {
                     ForEach(Array(data.enumerated()), id: \.offset) { index, item in
-                        Text(formatDate(item.date))
+                        Text(weekdayAbbrev(item.date))
                             .font(.caption2)
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         
                         if index < data.count - 1 {
                             Spacer()
@@ -716,6 +760,12 @@ struct EmotionLineChart: View {
         formatter.dateFormat = "MMM d"
         return formatter.string(from: date)
     }
+    
+    private func weekdayAbbrev(_ date: Date) -> String {
+           let formatter = DateFormatter()
+           formatter.dateFormat = "EEE"
+           return formatter.string(from: date)
+       }
     
     // MARK: - Y-axis tick helpers
     private func yAxisTicks(maxValue: Int, targetTicks: Int) -> [Int] {
@@ -853,18 +903,10 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func loadCurrentStreak() {
-        guard let user = persistenceController.getCurrentUser() else { return }
         
-        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "user == %@", user)
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
-        
-        do {
-            let emotionalData = try persistenceController.container.viewContext.fetch(request)
-            currentStreak = calculateCurrentStreak(from: emotionalData)
-        } catch {
-            currentStreak = 0
-        }
+        guard let user = persistenceController.getCurrentUser() else { currentStreak = 0; return }
+        currentStreak = Int(user.currentStreak)
+   
     }
     
     private func loadAverageMood() {

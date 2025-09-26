@@ -14,6 +14,8 @@ extension Notification.Name {
     static let navigateToVoiceAnalysis = Notification.Name("navigateToVoiceAnalysis")
     static let navigateToMainApp = Notification.Name("navigateToMainApp")
     static let navigateToInsights = Notification.Name("navigateToInsights")
+    static let navigateToCheckIns = Notification.Name("navigateToCheckIns")
+    static let showCheckInsFromProfile = Notification.Name("showCheckInsFromProfile")
 }
 
 @main
@@ -29,6 +31,10 @@ struct EmotiQApp: App {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .environmentObject(subscriptionService)
+                .onAppear {
+                    // One-time backfill of intervention streaks
+                    PersistenceController.shared.backfillInterventionStreaksIfNeeded()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     // Refresh daily usage when app becomes active
                     subscriptionService.refreshDailyUsage()

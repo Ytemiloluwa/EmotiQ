@@ -279,9 +279,6 @@ struct VoiceGuidedInterventionView: View {
                     
                     Spacer()
                     
-                    Text(formatDuration(Date().timeIntervalSince(sessionStartTime)))
-                        .font(.caption)
-                        .foregroundColor(ThemeColors.secondaryText)
                 }
                 
                 // Progress Bar
@@ -356,6 +353,13 @@ struct VoiceGuidedInterventionView: View {
                         )
                     )
                     .frame(width: breathingProgress * 160 + 40, height: breathingProgress * 160 + 40)
+                    .overlay(
+                        Circle()
+                            .stroke(breathingPhase.color.opacity(0.25), lineWidth: 8)
+                            .blur(radius: 8)
+                            .opacity(Double(interventionService.audioLevel) * 0.8)
+                    )
+                    .shadow(color: breathingPhase.color.opacity(0.35), radius: 20 + 20 * Double(interventionService.audioLevel), x: 0, y: 0)
                     .animation(.easeInOut(duration: getBreathingDuration()), value: breathingProgress)
                 
                 // Phase instruction
@@ -365,23 +369,43 @@ struct VoiceGuidedInterventionView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
                     
-                    Text(String(format: "%.0f", breathingProgress * getBreathingDuration()))
+                    Text(String(format: "%.0f", max(0, getBreathingDuration() - breathingProgress * getBreathingDuration())))
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.8))
                 }
+                .onChange(of: breathingPhase) { _, _ in
+                    HapticManager.shared.selection()
+                }
             }
             
-            // Breathing Instructions
-            VStack(spacing: 12) {
-                Text("Follow the circle with your breath")
+
+            VStack(spacing: 10) {
+                Text(phasePrimaryText())
                     .font(.headline)
-                    .fontWeight(.medium)
+                    .fontWeight(.semibold)
                     .foregroundColor(ThemeColors.primaryText)
+                    .transition(.opacity)
+                    .animation(.easeInOut, value: breathingPhase)
                 
-                Text("Circle grows: Inhale • Circle shrinks: Exhale")
+                Text(phaseSecondaryText())
                     .font(.subheadline)
                     .foregroundColor(ThemeColors.secondaryText)
                     .multilineTextAlignment(.center)
+                    .transition(.opacity)
+                    .animation(.easeInOut, value: breathingPhase)
+                
+                if let script = interventionService.currentScript,
+                   interventionService.currentSegment < script.segments.count {
+                    Text(script.segments[interventionService.currentSegment].text)
+                        .font(.footnote)
+                        .foregroundColor(ThemeColors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                        .padding(.top, 2)
+                        .transition(.opacity)
+                        .animation(.easeInOut, value: interventionService.currentSegment)
+                }
             }
         }
         .padding(20)
@@ -390,7 +414,73 @@ struct VoiceGuidedInterventionView: View {
                 .fill(ThemeColors.secondaryBackground)
                 .shadow(color: .black.opacity(0.1), radius: 15, x: 0, y: 8)
         )
+        .onChange(of: interventionService.currentTime) { _, _ in
+            syncBreathingToAudio()
+        }
     }
+    
+    private func syncBreathingToAudio() {
+            guard let type = selectedBreathingType else { return }
+            // Map current audio segment index to phase when script provides explicit cues
+            // Fallback: drive progress smoothly based on phase durations
+            let duration = getBreathingDuration()
+            let increment = duration > 0 ? 0.1 / duration : 1.0
+            switch breathingPhase {
+            case .inhale:
+                if !phaseScheduled { HapticManager.shared.breathingSync(phase: .inhale, duration: getBreathingDuration()) }
+                phaseScheduled = false
+                breathingProgress = min(1.0, breathingProgress + increment)
+                if breathingProgress >= 1.0 { breathingPhase = .hold }
+            case .hold:
+                if !phaseScheduled {
+                    phaseScheduled = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                        breathingPhase = .exhale
+                        phaseScheduled = false
+                    }
+                }
+            case .exhale:
+                if !phaseScheduled { HapticManager.shared.breathingSync(phase: .exhale, duration: getBreathingDuration()) }
+                phaseScheduled = false
+                breathingProgress = max(0.0, breathingProgress - increment)
+                if breathingProgress <= 0.0 { breathingPhase = .pause }
+            case .pause:
+                if !phaseScheduled {
+                    phaseScheduled = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                        breathingPhase = .inhale
+                        phaseScheduled = false
+                    }
+                }
+            }
+        }
+
+        private func phasePrimaryText() -> String {
+            switch breathingPhase {
+            case .inhale:
+                return "Breathe in slowly"
+            case .hold:
+                return "Hold gently"
+            case .exhale:
+                return "Breathe out fully"
+            case .pause:
+                return "Rest"
+            }
+        }
+        
+        private func phaseSecondaryText() -> String {
+            let remaining = max(0, Int(ceil(getBreathingDuration() - breathingProgress * getBreathingDuration())))
+            switch breathingPhase {
+            case .inhale:
+                return "Fill your belly • \(remaining)s"
+            case .hold:
+                return "Soften your shoulders • \(remaining)s"
+            case .exhale:
+                return "Relax your jaw • \(remaining)s"
+            case .pause:
+                return "Notice the calm • \(remaining)s"
+            }
+        }
 
     // MARK: - Square Breathing Visualization (Box Breathing)
     private var squareBreathingVisualization: some View {
@@ -480,27 +570,6 @@ struct VoiceGuidedInterventionView: View {
     
     private var audioControlsSection: some View {
         VStack(spacing: 16) {
-            // Waveform Visualization
-            HStack(spacing: 2) {
-                ForEach(0..<30, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(
-                            interventionService.isPlaying
-                            ? (selectedIntervention != nil ? getInterventionColor(selectedIntervention!.category).opacity(Double.random(in: 0.3...1.0)) : ThemeColors.secondaryText.opacity(0.3))
-                            : ThemeColors.secondaryText.opacity(0.3)
-                        )
-                        .frame(width: 3, height: CGFloat.random(in: 6...24))
-                        .animation(
-                            interventionService.isPlaying
-                            ? .easeInOut(duration: 0.5)
-                                .repeatForever(autoreverses: true)
-                                .delay(Double(index) * 0.03)
-                            : .easeInOut(duration: 0.3),
-                            value: interventionService.isPlaying
-                        )
-                }
-            }
-            .frame(height: 30)
             
             // Playback Controls
             HStack(spacing: 24) {

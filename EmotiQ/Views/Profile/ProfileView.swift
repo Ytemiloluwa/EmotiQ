@@ -65,9 +65,23 @@ struct ProfileView: View {
             .navigationDestination(isPresented: $viewModel.showingSupportInfo) {
                 SupportInfoView(viewModel: viewModel)
             }
+            .navigationDestination(isPresented: $viewModel.showingInsights) {
+                FeatureGateView(feature: .advancedAnalytics) {
+                    InsightsView()
+                }
+            }
+            .navigationDestination(isPresented: $viewModel.showingCheckIns) {
+                CheckInsListView()
+            }
             .onAppear {
                 viewModel.setThemeManager(themeManager)
                 viewModel.loadProfileData()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showCheckInsFromProfile)) { _ in
+                viewModel.showingCheckIns = true
+            }
+            .onChange(of: viewModel.profileImage) { newImage in
+                viewModel.saveProfileImage(newImage)
             }
         }
     }
@@ -131,9 +145,9 @@ struct CompactProfileHeader: View {
                 
                 Spacer()
                 
-//                Image(systemName: "chevron.right")
-//                    .foregroundColor(.secondary)
-//                    .font(.caption)
+                //                Image(systemName: "chevron.right")
+                //                    .foregroundColor(.secondary)
+                //                    .font(.caption)
             }
             .padding()
             .frame(maxWidth: .infinity)
@@ -162,19 +176,35 @@ struct HorizontalMetricsSection: View {
                 .foregroundColor(.primary)
             
             HStack(spacing: 12) {
-                CompactStatCard(
-                    title: "Check-ins",
-                    value: "\(viewModel.totalCheckIns)",
-                    icon: "checkmark.circle.fill",
-                    color: .green
-                )
                 
-                CompactStatCard(
-                    title: "Insights",
-                    value: "\(viewModel.totalInsights)",
-                    icon: "lightbulb.fill",
-                    color: .yellow
-                )
+                Button(action: {
+                    HapticManager.shared.selection()
+                    viewModel.showingCheckIns = true
+                }) {
+                    CompactStatCard(
+                        title: "Check-ins",
+                        value: "\(viewModel.totalCheckIns)",
+                        icon: "checkmark.circle.fill",
+                        color: .green
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: {
+                    
+                    HapticManager.shared.selection()
+                    viewModel.showingInsights = true
+                }){
+                    
+                    CompactStatCard(
+                        title: "Insights",
+                        value: "\(viewModel.totalInsights)",
+                        icon: "chart.bar.fill",
+                        color: .yellow
+                    )
+                    
+                }
+                .buttonStyle(PlainButtonStyle())
                 
                 Button(action: {
                     HapticManager.shared.selection()
@@ -401,6 +431,8 @@ class ProfileViewModel: ObservableObject {
     @Published var showingSupportInfo = false
     @Published var showingCompletedGoals = false
     @Published var showingSubscriptionManagement = false
+    @Published var showingInsights = false
+    @Published var showingCheckIns = false
     
     private let biometricService = BiometricAuthenticationService()
     private let persistenceController = PersistenceController.shared
@@ -511,8 +543,16 @@ class ProfileViewModel: ObservableObject {
         let securityManager = SecurityManager.shared
         faceIDEnabled = securityManager.isFaceIDEnabled()
         
-        // Load display name from Core Data or UserDefaults
-        displayName = UserDefaults.standard.string(forKey: "userDisplayName") ?? "User"
+        if let user = persistenceController.getCurrentUser() {
+            if let name = user.name, !name.isEmpty {
+                displayName = name
+            } else {
+                displayName = UserDefaults.standard.string(forKey: "userDisplayName") ?? "User"
+            }
+            loadProfileImage(for: user)
+        } else {
+            displayName = UserDefaults.standard.string(forKey: "userDisplayName") ?? "User"
+        }
     }
     
     private func loadUserStats() {
@@ -521,11 +561,16 @@ class ProfileViewModel: ObservableObject {
             return
         }
         
-        // Load total check-ins
-        loadTotalCheckIns(for: user)
+        // Ensure cached stats are up-to-date (idempotent)
+        persistenceController.recalculateUserStats(for: user)
+        totalCheckIns = Int(user.totalCheckIns)
+        currentStreak = Int(user.currentStreak)
         
-        // Load current streak
-        loadCurrentStreak(for: user)
+        // Load total check-ins
+        //        loadTotalCheckIns(for: user)
+        //
+        //        // Load current streak
+        //        loadCurrentStreak(for: user)
         
         // Load completed goals
         loadCompletedGoals(for: user)
@@ -537,32 +582,32 @@ class ProfileViewModel: ObservableObject {
         calculateTotalInsights(for: user)
     }
     
-    private func loadTotalCheckIns(for user: User) {
-        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "user == %@", user)
-        
-        do {
-            let results = try persistenceController.container.viewContext.fetch(request)
-            totalCheckIns = results.count
-        } catch {
-          
-            totalCheckIns = 0
-        }
-    }
-    
-    private func loadCurrentStreak(for user: User) {
-        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "user == %@", user)
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
-        
-        do {
-            let emotionalData = try persistenceController.container.viewContext.fetch(request)
-            currentStreak = calculateCurrentStreak(from: emotionalData)
-        } catch {
-            
-            currentStreak = 0
-        }
-    }
+    //    private func loadTotalCheckIns(for user: User) {
+    //        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+    //        request.predicate = NSPredicate(format: "user == %@", user)
+    //
+    //        do {
+    //            let results = try persistenceController.container.viewContext.fetch(request)
+    //            totalCheckIns = results.count
+    //        } catch {
+    //
+    //            totalCheckIns = 0
+    //        }
+    //    }
+    //
+    //    private func loadCurrentStreak(for user: User) {
+    //        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+    //        request.predicate = NSPredicate(format: "user == %@", user)
+    //        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
+    //
+    //        do {
+    //            let emotionalData = try persistenceController.container.viewContext.fetch(request)
+    //            currentStreak = calculateCurrentStreak(from: emotionalData)
+    //        } catch {
+    //
+    //            currentStreak = 0
+    //        }
+    //    }
     
     private func loadCompletedGoals(for user: User) {
         let request: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
@@ -572,7 +617,7 @@ class ProfileViewModel: ObservableObject {
             let results = try persistenceController.container.viewContext.fetch(request)
             completedGoals = results.count
         } catch {
-     
+            
             completedGoals = 0
         }
     }
@@ -598,10 +643,40 @@ class ProfileViewModel: ObservableObject {
                 memberSince = formatter.string(from: Date())
             }
         } catch {
-           
+            
             let formatter = DateFormatter()
             formatter.dateFormat = "MMM yyyy"
             memberSince = formatter.string(from: Date())
+        }
+    }
+    
+    private func loadProfileImage(for user: User) {
+        if let data = user.profileImageData, let image = UIImage(data: data) {
+            profileImage = image
+        } else {
+            profileImage = nil
+        }
+    }
+    
+    func saveProfileImage(_ image: UIImage?) {
+        guard let user = persistenceController.getCurrentUser() else { return }
+        if let image = image {
+            let jpeg = image.jpegData(compressionQuality: 0.9)
+            let data = jpeg ?? image.pngData()
+            user.profileImageData = data
+        } else {
+            user.profileImageData = nil
+        }
+        persistenceController.save()
+    }
+    
+    func updateDisplayName(_ name: String) {
+        displayName = name
+        if let user = persistenceController.getCurrentUser() {
+            user.name = name
+            persistenceController.save()
+        } else {
+            UserDefaults.standard.set(name, forKey: "userDisplayName")
         }
     }
     
@@ -642,7 +717,7 @@ class ProfileViewModel: ObservableObject {
             
             totalInsights = uniqueInsights.count
         } catch {
-         
+            
             totalInsights = 0
         }
     }
@@ -845,8 +920,7 @@ struct EditProfileView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        viewModel.displayName = editedName
-                        UserDefaults.standard.set(editedName, forKey: "userDisplayName")
+                        viewModel.updateDisplayName(editedName)
                         presentationMode.wrappedValue.dismiss()
                     }
                     .fontWeight(.semibold)

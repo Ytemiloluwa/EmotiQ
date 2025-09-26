@@ -47,30 +47,68 @@ final class InterventionCompletionStore {
         entity.stepsCompleted = Int16(stepsCompleted)
         entity.totalSteps = Int16(totalSteps)
         try context.save()
-        let streak = try computeCurrentStreak(referenceDate: completedAt)
+        let streak = try upsertStreak(forTitle: intervention.title, completedAt: completedAt)
         let isMilestone = streak == 7 || streak == 30
         return (streak, isMilestone, entity.objectID)
     }
-    func computeCurrentStreak(referenceDate: Date = Date()) throws -> Int {
+    
+    private func upsertStreak(forTitle title: String, completedAt: Date) throws -> Int {
+            let cal = Calendar.current
+            let day = cal.startOfDay(for: completedAt)
+            let fetch: NSFetchRequest<InterventionStreakEntity> = InterventionStreakEntity.fetchRequest()
+            fetch.predicate = NSPredicate(format: "interventionTitle == %@", title)
+            fetch.fetchLimit = 1
+            let existing = try context.fetch(fetch).first
+            let record = existing ?? InterventionStreakEntity(context: context)
+            if existing == nil { record.interventionTitle = title; record.currentStreak = 0 }
+            if let last = record.lastActiveDay {
+                if cal.isDate(day, inSameDayAs: last) {
+                    // same day: no change
+                } else if let prev = cal.date(byAdding: .day, value: 1, to: last), cal.isDate(day, inSameDayAs: prev) {
+                    record.currentStreak = record.currentStreak + 1
+                    record.lastActiveDay = day
+                } else {
+                    record.currentStreak = 1
+                    record.lastActiveDay = day
+                }
+            } else {
+                record.currentStreak = 1
+                record.lastActiveDay = day
+            }
+            record.updatedAt = Date()
+            try context.save()
+            return Int(record.currentStreak)
+        }
+    
+    func computeCurrentStreak(forTitle title: String, referenceDate: Date = Date()) throws -> Int {
+        let cal = Calendar.current
         let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
-        let start = Calendar.current.date(byAdding: .day, value: -35, to: referenceDate) ?? referenceDate
-        fetch.predicate = NSPredicate(format: "completedAt >= %@ AND completedAt <= %@", start as NSDate, referenceDate as NSDate)
+        let windowStart = cal.date(byAdding: .day, value: -35, to: referenceDate) ?? referenceDate
+        fetch.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "interventionTitle == %@", title),
+            NSPredicate(format: "completedAt >= %@", windowStart as NSDate),
+            NSPredicate(format: "completedAt <= %@", referenceDate as NSDate)
+        ])
         fetch.sortDescriptors = [NSSortDescriptor(key: "completedAt", ascending: false)]
         let results = try context.fetch(fetch)
-        var set = Set<Date>()
-        for item in results {
-            if let d = item.completedAt { set.insert(Calendar.current.startOfDay(for: d)) }
-        }
-        let today = Calendar.current.startOfDay(for: referenceDate)
+        
+        guard !results.isEmpty else { return 0 }
+        var completedDays = Set<Date>()
+        for item in results { if let d = item.completedAt { completedDays.insert(cal.startOfDay(for: d)) } }
+        // Start counting from today if present; otherwise start from most recent completion day
+        var startDay = cal.startOfDay(for: referenceDate)
+        if !completedDays.contains(startDay) { startDay = completedDays.max() ?? startDay }
+
         var streak = 0
-        var cursor = today
-        while set.contains(cursor) {
+        var cursor = startDay
+        while completedDays.contains(cursor) {
             streak += 1
-            if let prev = Calendar.current.date(byAdding: .day, value: -1, to: cursor) { cursor = prev } else { break }
+            guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = prev
         }
         return streak
     }
-
+    
     func countCompletionsThisWeek(forTitle title: String) throws -> Int {
         let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
         let cal = Calendar.current
@@ -80,6 +118,27 @@ final class InterventionCompletionStore {
             NSPredicate(format: "interventionTitle == %@", title),
             NSPredicate(format: "completedAt >= %@", startOfWeek as NSDate),
             NSPredicate(format: "completedAt <= %@", today as NSDate)
+        ])
+        fetch.sortDescriptors = [NSSortDescriptor(key: "completedAt", ascending: false)]
+        let results = try context.fetch(fetch)
+        var uniqueDays = Set<Date>()
+        for item in results {
+            if let d = item.completedAt {
+                uniqueDays.insert(cal.startOfDay(for: d))
+            }
+        }
+        return uniqueDays.count
+    }
+    
+    func countCompletionsToday(forTitle title: String) throws -> Int {
+        let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
+        let cal = Calendar.current
+        let now = Date()
+        let startOfDay = cal.startOfDay(for: now)
+        fetch.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "interventionTitle == %@", title),
+            NSPredicate(format: "completedAt >= %@", startOfDay as NSDate),
+            NSPredicate(format: "completedAt <= %@", now as NSDate)
         ])
         return try context.count(for: fetch)
     }
@@ -196,8 +255,15 @@ struct InterventionHeaderCard: View {
     let intervention: QuickIntervention
     @EnvironmentObject private var themeManager: ThemeManager
     @State private var streakCount: Int = 0
-    @State private var weeklyCount: Int = 0
+    @State private var todayCount: Int = 0
     private let store = InterventionCompletionStore()
+    
+    private var streakLabel: String {
+        if streakCount == 0 { return "🔥 0/7" }
+        if streakCount < 7 { return "🔥 \(streakCount)/7" }
+        if streakCount < 30 { return "🔥 \(streakCount)/30" }
+        return "🔥 30/30"
+    }
     
     var body: some View {
         VStack(spacing: 16) {
@@ -253,9 +319,9 @@ struct InterventionHeaderCard: View {
                 Spacer()
                 
                 HStack(spacing: 8) {
-                    ProgressRingView(progress: min(Double(weeklyCount)/7.0, 1.0), label: "\(weeklyCount)/7", color: intervention.color)
-                        .frame(width: 34, height: 34)
-                    Text("🔥 \(streakCount)")
+                    ProgressRingView(progress: 1.0, label: "\(todayCount)", color: intervention.color)
+                        .frame(width: 42, height: 42)
+                    Text(streakLabel)
                         .font(.subheadline.weight(.semibold))
                         .fontDesign(.rounded)
                         .foregroundColor(ThemeColors.primaryText)
@@ -282,11 +348,12 @@ struct InterventionHeaderCard: View {
         .padding()
         .themedCard()
         .onAppear {
-            if let streak = try? store.computeCurrentStreak() { streakCount = streak }
-            if let count = try? store.countCompletionsThisWeek(forTitle: intervention.title) { weeklyCount = count }
+            if let persisted = try? fetchPersistedStreak(title: intervention.title) { streakCount = persisted }
+            else if let streak = try? store.computeCurrentStreak(forTitle: intervention.title) { streakCount = streak }
+            if let count = try? store.countCompletionsToday(forTitle: intervention.title) { todayCount = count }
         }
     }
-
+    
     private var headerHelpfulText: String {
         let store = UserDefaults.standard
         let like = store.integer(forKey: "iv_helpful_like_\(intervention.title)")
@@ -296,6 +363,15 @@ struct InterventionHeaderCard: View {
         let pct = Int(round(Double(like) / Double(total) * 100))
         return "\(pct)% helpful"
     }
+}
+
+private func fetchPersistedStreak(title: String) throws -> Int? {
+    let context = PersistenceController.shared.container.viewContext
+    let request: NSFetchRequest<InterventionStreakEntity> = InterventionStreakEntity.fetchRequest()
+    request.predicate = NSPredicate(format: "interventionTitle == %@", title)
+    request.fetchLimit = 1
+    if let entity = try context.fetch(request).first { return Int(entity.currentStreak) }
+    return nil
 }
 
 // MARK: - Benefits Section
@@ -865,7 +941,7 @@ struct CompletedItemView: View {
                 .foregroundColor(ThemeColors.primaryText)
             Spacer()
             if item.duration > 0 {
-                Text("\(item.duration/60)m")
+                Text(item.duration >= 60 ? "\(Int(round(Double(item.duration)/60.0)))m" : "\(item.duration)s")
                     .font(.caption)
                     .fontDesign(.rounded)
                     .foregroundColor(ThemeColors.secondaryText)
@@ -891,7 +967,7 @@ struct ProgressRingView: View {
                 .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text(label)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
                 .foregroundColor(ThemeColors.primaryText)
         }
     }
@@ -997,30 +1073,41 @@ class InterventionSessionViewModel: ObservableObject {
     }
     
     func togglePlayPause() {
-        isPaused.toggle()
-        
-        if isPaused {
-            timer?.invalidate()
-            saveProgress()
-        } else if showTimer {
-            startStepTimer()
-        }
-        log(isPaused ? "paused" : "resumed")
-    }
+           isPaused.toggle()
+           
+           if isPaused {
+               // Freeze remaining time and persist
+               updateTimeRemaining()
+               timer?.invalidate()
+               endAt = Date().addingTimeInterval(TimeInterval(timeRemaining))
+               saveProgress()
+           } else if showTimer {
+               // Resume from remaining time
+               startStepTimer(remaining: timeRemaining)
+           }
+           log(isPaused ? "paused" : "resumed")
+       }
     
     func completeSession() {
         timer?.invalidate()
+        // Compute actual time spent BEFORE mutating state
+        let completedStepsCount = max(0, min(currentStep, steps.count))
+        var durationSpent = steps.prefix(completedStepsCount).reduce(0) { $0 + $1.durationSec }
+        if completedStepsCount < steps.count {
+            let planned = steps.isEmpty ? stepDuration : steps[completedStepsCount].durationSec
+            let elapsedInCurrent = max(0, planned - timeRemaining)
+            durationSpent += elapsedInCurrent
+        }
+        // Now mutate state and persist
         isActive = false
-        currentStep = 0
         clearProgress()
         HapticManager.shared.celebration(.goalCompleted)
-        let durationSpent = (steps.isEmpty ? stepDuration : steps[0].durationSec) * max(currentStep, 1)
         if let iv = intervention {
             do {
                 let result = try completionStore.recordCompletion(
                     intervention: iv,
                     duration: durationSpent,
-                    stepsCompleted: currentStep,
+                    stepsCompleted: completedStepsCount,
                     totalSteps: totalSteps
                 )
                 lastCompletionObjectID = result.objectID
@@ -1028,33 +1115,33 @@ class InterventionSessionViewModel: ObservableObject {
                     await OneSignalService.shared.sendStreakNotification(streak: result.streak, interventionTitle: iv.title, isMilestone: result.isMilestone)
                 }
             } catch {
-               
+            
             }
         }
         log("completed")
     }
     
-    private func startStepTimer() {
-        timer?.invalidate()
-        let duration = steps.isEmpty ? stepDuration : steps[currentStep].durationSec
-        endAt = Date().addingTimeInterval(TimeInterval(duration))
-        updateTimeRemaining()
-        
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.updateTimeRemaining()
-            if self.isBreathingStep {
-                self.advanceBreathingPhaseTick()
-            }
-            if self.timeRemaining <= 0 {
-                self.timer?.invalidate()
-                if !self.isLastStep {
-                    self.nextStep()
+    private func startStepTimer(remaining: Int? = nil) {
+            timer?.invalidate()
+            let duration = remaining ?? (steps.isEmpty ? stepDuration : steps[currentStep].durationSec)
+            endAt = Date().addingTimeInterval(TimeInterval(duration))
+            updateTimeRemaining()
+            
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                self.updateTimeRemaining()
+                if self.isBreathingStep {
+                    self.advanceBreathingPhaseTick()
+                }
+                if self.timeRemaining <= 0 {
+                    self.timer?.invalidate()
+                    if !self.isLastStep {
+                        self.nextStep()
+                    }
                 }
             }
+            if isBreathingStep { startBreathingCycle() } else { breathingPhase = nil }
         }
-        if isBreathingStep { startBreathingCycle() } else { breathingPhase = nil }
-    }
     
     private func updateTimeRemaining() {
         let remaining = Int(max(0, (endAt ?? Date()).timeIntervalSinceNow))
@@ -1090,18 +1177,18 @@ class InterventionSessionViewModel: ObservableObject {
         updateTimeRemaining()
         canResume = true
     }
-
+    
     var isBreathingStep: Bool {
         guard currentStep < steps.count else { return false }
         return steps[currentStep].type == .breathing
     }
-
+    
     private func startBreathingCycle() {
         guard isBreathingStep, let pattern = steps[currentStep].breathing else { return }
         breathingPhase = .inhale
         breathingPhaseRemaining = pattern.inhale
     }
-
+    
     private func advanceBreathingPhaseTick() {
         guard isBreathingStep, let pattern = steps[currentStep].breathing else { return }
         if breathingPhaseRemaining > 0 {
@@ -1158,7 +1245,7 @@ class InterventionSessionViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-
+    
     func submitFeedbackTags(_ tags: [String]) {
         guard let iv = intervention else { return }
         Task { @MainActor in
@@ -1181,14 +1268,14 @@ class InterventionSessionViewModel: ObservableObject {
                     }
                 }
             } catch {
-             
+                
             }
         }
     }
     
     // MARK: - Analytics (lightweight)
     private func log(_ name: String) {
-   
+        
     }
 }
 

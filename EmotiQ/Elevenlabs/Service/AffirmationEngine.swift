@@ -78,7 +78,6 @@ class AffirmationEngine: ObservableObject {
                 voiceAffirmations.append(voiceAffirmation)
                 
             } catch ElevenLabsError.noVoiceProfile {
-                // User needs to set up voice cloning - log for debugging
                 throw ElevenLabsError.noVoiceProfile
                 
             } catch {
