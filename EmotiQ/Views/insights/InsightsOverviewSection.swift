@@ -30,8 +30,8 @@ struct InsightsOverviewSection: View {
                     title: "Avg Mood",
                     value: viewModel.averageMood.emoji,
                     subtitle: viewModel.averageMood.displayName,
-                    icon: "heart.fill",
-                    color: .pink
+                    icon: "person.fill",
+                    color: .gray
                 )
                 
                 OverviewCard(

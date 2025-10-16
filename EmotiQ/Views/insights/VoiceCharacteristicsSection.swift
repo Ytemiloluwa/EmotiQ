@@ -218,20 +218,19 @@ struct PitchEnergyTrendsChart: View {
                 VStack(spacing: 8) {
 
                     
-                    HStack(alignment: .top, spacing: 8) {
-                        // Y-axis labels
-                        VStack(alignment: .trailing, spacing: 0) {
-                            ForEach((0...5).reversed(), id: \.self) { i in
-                                Text(String(format: "%.1f", Double(i) * 0.2))
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                    .frame(height: 30)
+                    GeometryReader { containerGeo in
+                        HStack(alignment: .top, spacing: 8) {
+                            // Y-axis labels aligned with chart baseline
+                            VStack(alignment: .trailing, spacing: 0) {
+                                ForEach((0...5).reversed(), id: \.self) { i in
+                                    Text(String(format: "%.1f", Double(i) * 0.2))
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .frame(height: max(containerGeo.size.height / 6.0, 1))
+                                }
                             }
-                        }
-                        .frame(width: 25)
-                        .padding(.bottom, 8) // Align with chart bottom
-                        
-                        VStack(spacing: 8) {
+                            .frame(width: 25)
+
                             // Histogram chart area
                             GeometryReader { geometry in
                                 ZStack {
@@ -240,20 +239,17 @@ struct PitchEnergyTrendsChart: View {
                                         ForEach(0..<6) { i in
                                             Divider()
                                                 .opacity(0.8)
-                                            if i < 5 {
-                                                Spacer()
-                                            }
+                                            if i < 5 { Spacer() }
                                         }
                                     }
-                                    .offset(y: -2)
-                                    
+
                                     // Histogram bars
                                     HStack(alignment: .bottom, spacing: 4) {
                                         ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
                                             let width = geometry.size.width
                                             let height = geometry.size.height
                                             let barWidth = (width - CGFloat(aggregatedData.count - 1) * 4) / CGFloat(aggregatedData.count)
-                                            
+
                                             HStack(alignment: .bottom, spacing: 2) {
                                                 // Pitch bar (blue)
                                                 let pitchHeight = max(CGFloat(min(max(item.pitch / 500.0, 0.0), 1.0)) * height, 2)
@@ -263,7 +259,7 @@ struct PitchEnergyTrendsChart: View {
                                                         width: barWidth * 0.45,
                                                         height: pitchHeight
                                                     )
-                                                
+
                                                 // Energy bar (green)
                                                 RoundedRectangle(cornerRadius: 2)
                                                     .fill(Color.green.opacity(0.7))
@@ -275,29 +271,30 @@ struct PitchEnergyTrendsChart: View {
                                         }
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                                    .padding(.bottom, 8) // Add bottom padding to align with Y-axis origin
                                 }
                             }
-                            .frame(height: 150)
-                            .padding(.top, 8)
-                            .padding(.bottom, 0) // Remove bottom padding to align with Y-axis origin
-                            .clipped()
-                            
-                            // X-axis labels (dates) - positioned at bottom
-                            HStack {
-                                ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
-                                    Text(formatDate(item.date))
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                    
-                                    if index < aggregatedData.count - 1 {
-                                        Spacer()
-                                    }
-                                }
-                            }
-                            .padding(.top, 8) // Add space between chart and labels
                         }
                     }
+                    .frame(height: 150)
+                    .padding(.top, 8)
+                    .clipped()
+
+                    // X-axis labels (dates) - aligned under chart area (exclude Y-axis width + spacing)
+                    HStack(spacing: 0) {
+                        Spacer().frame(width: 33) // 25 (Y-axis) + 8 (inter-item spacing)
+                        HStack {
+                            ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
+                                Text(formatDate(item.date))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                
+                                if index < aggregatedData.count - 1 {
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 8) // Add space between chart and labels
                     
                     // Legend
                     HStack(spacing: 20) {

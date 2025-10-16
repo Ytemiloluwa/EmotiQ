@@ -36,6 +36,8 @@ struct CustomAffirmationCreatorView: View {
     
     private let maxCharacters = 200
     
+    @Environment(\.dismiss) private var dismiss
+    
     var body: some View {
         
         ScrollView {
@@ -76,7 +78,19 @@ struct CustomAffirmationCreatorView: View {
         )
         .navigationTitle("Create Affirmation")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    HapticManager.shared.selection()
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 if generatedAffirmation != nil {
                     Button(isSaving ? "Saving..." : "Save") {

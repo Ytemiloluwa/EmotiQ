@@ -61,33 +61,20 @@ struct AffirmationDetailView: View {
         )
         .navigationTitle("Affirmation")
         .navigationBarTitleDisplayMode(.inline)
-//        .toolbar {
-//            ToolbarItem(placement: .navigationBarTrailing) {
-//                Menu {
-//                    Button {
-//                        shareAffirmation()
-//                    } label: {
-//                        Label("Share", systemImage: "square.and.arrow.up")
-//                    }
-//
-//                    Button {
-//                        favoriteAffirmation()
-//                    } label: {
-//                        Label("Add to Favorites", systemImage: "heart")
-//                    }
-//
-//                    Button {
-//                        reportAffirmation()
-//                    } label: {
-//                        Label("Report Issue", systemImage: "exclamationmark.triangle")
-//                    }
-//                } label: {
-//                    Image(systemName: "ellipsis.circle")
-//                        .foregroundColor(ThemeColors.accent)
-//                }
-//                .hapticFeedback(.standard)
-//            }
-//        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    HapticManager.shared.selection()
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+            }
+        }
+
         .sheet(isPresented: $showingEffectivenessRating) {
             EffectivenessRatingView(
                 affirmation: affirmation,

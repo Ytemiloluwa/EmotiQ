@@ -3,7 +3,7 @@ import Combine
 
 // MARK: - Micro Interventions View
 struct MicroInterventionsView: View {
-    @StateObject private var viewModel = MicroInterventionsViewModel()
+    @ObservedObject private var viewModel = MicroInterventionsViewModel.shared
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
     //@State private var showingVoiceGuidedIntervention = false
@@ -42,6 +42,19 @@ struct MicroInterventionsView: View {
         }
         .navigationTitle("Micro-Interventions")
         .navigationBarTitleDisplayMode(.large)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    HapticManager.shared.selection()
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+            }
+        }
         .sheet(item: $viewModel.selectedIntervention) { intervention in
             InterventionDetailView(intervention: intervention, viewModel: viewModel)
         }
@@ -556,10 +569,14 @@ struct MindfulnessMoment: Identifiable {
 // MARK: - Micro Interventions View Model
 @MainActor
 class MicroInterventionsViewModel: ObservableObject {
+    static let shared = MicroInterventionsViewModel()
+    
     @Published var selectedIntervention: QuickIntervention?
     @Published var recentInterventions: [CompletedIntervention] = []
     @Published var isBreathingExerciseActive = false
     @Published var currentBreathingExercise: BreathingExercise?
+    
+    private init() {}
     
     // MARK: - Data Properties
     let quickReliefInterventions: [QuickIntervention] = [

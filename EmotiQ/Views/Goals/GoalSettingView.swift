@@ -52,7 +52,19 @@ struct GoalSettingView: View {
         }
         .navigationTitle("Goal Setting")
         .navigationBarTitleDisplayMode(.large)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    HapticManager.shared.selection()
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Add Goal") {
                     viewModel.showingGoalCreation = true

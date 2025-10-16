@@ -135,18 +135,19 @@ class CoreMLEmotionService: ObservableObject {
     // MARK: - Private Methods
     
     private func loadModel() {
-        Task {
+        Task.detached(priority: .utility) {
             do {
-                // Try to load custom trained model first
                 if let modelURL = Bundle.main.url(forResource: Config.modelName, withExtension: "mlmodelc") {
-                    model = try MLModel(contentsOf: modelURL)
-                
+                    let loaded = try MLModel(contentsOf: modelURL)
+                    await MainActor.run {
+                        self.model = loaded
+                    }
                 } else {
-                    // PRODUCTION: No custom model available - will use advanced heuristic analysis
+                    await MainActor.run {
                     
+                    }
                 }
             } catch {
-               
                 await MainActor.run {
                     self.analysisError = EmotionAnalysisError.modelNotLoaded
                 }

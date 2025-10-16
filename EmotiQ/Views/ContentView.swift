@@ -9,8 +9,6 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var subscriptionService: SubscriptionService
-    @StateObject private var emotionService = CoreMLEmotionService()
-    @StateObject private var voiceRecordingService = VoiceRecordingService()
     @State private var showingOnboarding = false
     @State private var isAuthenticated = false
     
@@ -19,8 +17,9 @@ struct ContentView: View {
             if isAuthenticated {
                 MainTabView()
                     .environmentObject(subscriptionService)
-                    .environmentObject(emotionService)
-                    .environmentObject(voiceRecordingService)
+                    // Defer heavy services until after authentication
+                    .environmentObject(CoreMLEmotionService.shared)
+                    .environmentObject(VoiceRecordingService())
                     .environmentObject(HapticManager.shared)
                     .environmentObject(ElevenLabsService.shared)
             } else {
@@ -47,20 +46,16 @@ struct ContentView: View {
     }
     
     private func authenticateWithBiometrics() {
-        Task {
+        Task { @MainActor in
             let securityManager = SecurityManager.shared
             do {
                 let success = try await securityManager.authenticateWithBiometrics(
                     reason: "Authenticate to access EmotiQ"
                 )
-                await MainActor.run {
-                    isAuthenticated = success
-                }
+                isAuthenticated = success
             } catch {
-                await MainActor.run {
-                    // Do not authenticate if Face ID fails or is cancelled
-                    isAuthenticated = false
-                }
+                // Stay on auth screen if cancelled/failed
+                isAuthenticated = false
             }
         }
     }
@@ -129,33 +124,23 @@ struct AuthenticationView: View {
     }
     
     private func authenticateUser() {
-        Task {
-            let biometricService = BiometricAuthenticationService()
+        Task { @MainActor in
             do {
-                let success = try await biometricService.authenticateUser(
+                let success = try await SecurityManager.shared.authenticateWithBiometrics(
                     reason: "Authenticate to access EmotiQ"
                 )
-                await MainActor.run {
-                    if success {
-                        isAuthenticated = true
-                    }
-                }
-            } catch let biometricError as BiometricError {
-                await MainActor.run {
-                    switch biometricError {
-                    case .userCancelled:
-                        // Don't show error for user cancellation
-                        break
-                    default:
-                        errorMessage = biometricError.localizedDescription
-                        showingError = true
-                    }
-                }
-            } catch {
-                await MainActor.run {
+                if success { isAuthenticated = true }
+            } catch let error as SecurityError {
+                switch error {
+                case .userCancelled:
+                    break
+                default:
                     errorMessage = error.localizedDescription
                     showingError = true
                 }
+            } catch {
+                errorMessage = error.localizedDescription
+                showingError = true
             }
         }
     }
@@ -205,4 +190,3 @@ struct ContentView_Previews: PreviewProvider {
         ContentView()
     }
 }
-

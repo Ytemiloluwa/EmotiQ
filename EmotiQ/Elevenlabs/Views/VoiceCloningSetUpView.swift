@@ -69,58 +69,60 @@ struct VoiceCloningSetupView: View {
     @State private var showingAffirmations = false
     
     var body: some View {
+        
         FeatureGateView(feature: .voiceCloning) {
-            NavigationStack {
-                ZStack {
-                    ThemeColors.primaryBackground
-                        .ignoresSafeArea()
-                    
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            // MARK: - Header
-                            VoiceCloningHeaderView()
-                            
-                            // MARK: - Setup Steps
-                            VoiceCloningStepsView(currentStep: viewModel.currentStep)
-                            
-                            // MARK: - Main Content
-                            switch viewModel.currentStep {
-                            case .introduction:
-                                IntroductionStepView(viewModel: viewModel)
-                            case .preparation:
-                                PreparationStepView(viewModel: viewModel)
-                            case .recording:
-                                RecordingStepView(viewModel: viewModel)
-                            case .processing:
-                                ProcessingStepView(viewModel: viewModel)
-                            case .completion:
-                                CompletionStepView(
-                                    viewModel: viewModel,
-                                    onNavigateToAffirmations: {
-                                        showingAffirmations = true
-                                    }
-                                )
-                            }
-                            
-                            Spacer(minLength: 100)
+            ZStack {
+                ThemeColors.primaryBackground
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // MARK: - Header
+                        VoiceCloningHeaderView()
+                        
+                        // MARK: - Setup Steps
+                        VoiceCloningStepsView(currentStep: viewModel.currentStep)
+                        
+                        // MARK: - Main Content
+                        switch viewModel.currentStep {
+                        case .introduction:
+                            IntroductionStepView(viewModel: viewModel)
+                        case .preparation:
+                            PreparationStepView(viewModel: viewModel)
+                        case .recording:
+                            RecordingStepView(viewModel: viewModel)
+                        case .processing:
+                            ProcessingStepView(viewModel: viewModel)
+                        case .completion:
+                            CompletionStepView(
+                                viewModel: viewModel,
+                                onNavigateToAffirmations: {
+                                    showingAffirmations = true
+                                }
+                            )
                         }
-                        .padding(.horizontal)
+                        
+                        Spacer(minLength: 100)
+                    }
+                    .padding(.horizontal)
+                }
+            }
+            .navigationTitle("Voice Setup")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if viewModel.currentStep != .processing {
+                        Button(action: {
+                            HapticManager.shared.selection()
+                            dismiss()
+                        }) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(ThemeColors.accent)
+                        }
                     }
                 }
-                .navigationTitle("Voice Setup")
-                .navigationBarTitleDisplayMode(.inline)
-                .navigationBarBackButtonHidden(viewModel.currentStep == .processing)
-                //            .toolbar {
-                //                ToolbarItem(placement: .navigationBarLeading) {
-                //                    if viewModel.currentStep != .processing {
-                //                        Button("Cancel") {
-                //                            HapticManager.shared.impact(.light)
-                //                            dismiss()
-                //                        }
-                //                        .foregroundColor(ThemeColors.accent)
-                //                    }
-                //                }
-                //            }
             }
             .onAppear {
                 viewModel.setupAudioSession()
@@ -137,14 +139,6 @@ struct VoiceCloningSetupView: View {
             }
             .navigationDestination(isPresented: $showingAffirmations) {
                 AffirmationsView()
-                    .navigationBarBackButtonHidden(true)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Coaching") {
-                                showingAffirmations = false
-                            }
-                        }
-                    }
             }
         }
     }
@@ -711,57 +705,6 @@ struct VoiceCloningSetupView: View {
                         .foregroundColor(ThemeColors.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                }
-                
-                // Test voice button
-                Button(action: {
-                    HapticManager.shared.impact(.medium)
-                    if viewModel.isPlayingAudio {
-                        // Stop playing if currently playing
-                        viewModel.stopAudio()
-                    } else {
-                        viewModel.testVoice()
-                    }
-                }) {
-                    HStack {
-                        if viewModel.isTestingVoice {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .foregroundColor(ThemeColors.accent)
-                        } else if viewModel.isPlayingAudio {
-                            Image(systemName: "stop.circle.fill")
-                        } else {
-                            Image(systemName: "play.circle.fill")
-                        }
-                        Text(viewModel.isTestingVoice ? "Generating..." : (viewModel.isPlayingAudio ? "Stop Audio" : "Test Your Voice"))
-                    }
-                    .font(.headline)
-                    .foregroundColor(ThemeColors.accent)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(ThemeColors.accent, lineWidth: 2)
-                    )
-                }
-                .disabled(viewModel.isTestingVoice)
-                
-                if viewModel.isPlayingAudio {
-                    HStack {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .foregroundColor(ThemeColors.accent)
-                        Text("Playing your voice...")
-                            .font(.subheadline)
-                            .foregroundColor(ThemeColors.secondaryText)
-                    }
-                } else if viewModel.voiceTestCompleted {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(ThemeColors.success)
-                        Text("Voice setup successfully")
-                            .font(.subheadline)
-                            .foregroundColor(ThemeColors.secondaryText)
-                    }
                 }
                 
                 // Continue button

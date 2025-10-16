@@ -101,23 +101,26 @@ struct VoiceGuidedInterventionView: View {
             }
             .navigationTitle(selectedIntervention?.title ?? "Voice Guided Reliefs")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(selectedIntervention != nil)
+            .navigationBarBackButtonHidden(true)
             .toolbar {
-                if selectedIntervention != nil {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        if selectedIntervention != nil {
+                            // Back to list inside the same view
                             selectedIntervention = nil
                             interventionService.stop()
                             stopBreathingTimer()
                             currentStep = 0
                             effectivenessRating = 0
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                Text("Back")
-                            }
-                            .foregroundColor(ThemeColors.primaryText)
+                        } else {
+                            // Pop to previous screen (Coaching)
+                            HapticManager.shared.selection()
+                            dismiss()
                         }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(ThemeColors.accent)
                     }
                 }
             }

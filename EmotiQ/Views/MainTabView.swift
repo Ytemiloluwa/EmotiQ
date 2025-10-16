@@ -76,10 +76,10 @@ struct MainTabView: View {
             setupTabBarAppearance()
             tabViewModel.setSubscriptionService(subscriptionService)
         }
-        .onChange(of: tabViewModel.selectedTab) { oldValue, newValue in
-            // Provide haptic feedback when tab bar items are tapped
-            HapticManager.shared.tabSwitch()
-        }
+//        .onChange(of: tabViewModel.selectedTab) { oldValue, newValue in
+//            // Provide haptic feedback when tab bar items are tapped
+//            HapticManager.shared.tabSwitch()
+//        }
         .onReceive(subscriptionService.currentSubscription) { subscriptionStatus in
             // When subscription changes, ensure we're not on a premium tab if subscription is lost
             if !subscriptionService.hasActiveSubscription &&
@@ -231,11 +231,11 @@ class TabViewModel: ObservableObject {
             return
         }
         
-        // Only trigger haptic if actually changing tabs
-        if selectedTab != tab {
-            HapticManager.shared.tabSwitch()
-        }
-        
+//        // Only trigger haptic if actually changing tabs
+//        if selectedTab != tab {
+//            HapticManager.shared.tabSwitch()
+//        }
+//        
         selectedTab = tab
     }
     
@@ -298,7 +298,7 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal)
             }
-            .navigationTitle("EmotiQ")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .themedBackground(.gradient)
             .background(ThemeColors.primaryBackground)
@@ -312,7 +312,7 @@ struct DashboardView: View {
             }
             .navigationDestination(isPresented: $showingAllPrompts) {
                 FeatureGateView(feature: .personalizedCoaching) {
-                    AllEmotionalPromptsView(viewModel: MicroInterventionsViewModel())
+                    AllEmotionalPromptsView(viewModel: MicroInterventionsViewModel.shared)
                 }
             }
         }
@@ -634,19 +634,7 @@ struct EmotionTrendsCard: View {
 extension EmotionTrendsCard {
     private func dynamicChartTitle(for data: [EmotionTrendData]) -> String {
         guard !data.isEmpty else { return "Voice check-ins" }
-        let calendar = Calendar.current
-        let today = Date()
-        let dates = data.map { $0.date }
-        guard let minDate = dates.min(), let maxDate = dates.max() else { return "Voice check-ins" }
-        if let weekInterval = calendar.dateInterval(of: .weekOfYear, for: today) {
-            if minDate >= weekInterval.start && maxDate < weekInterval.end {
-                return "Voice check-ins this week"
-            }
-        }
-        if calendar.isDateInToday(maxDate) && data.count == 7 {
-            return "Voice check-ins in the last 7 days"
-        }
-        return "Voice check-ins in the last \(data.count) days"
+        return "Voice check-ins in this week"
     }
 }
 
@@ -762,10 +750,10 @@ struct EmotionLineChart: View {
     }
     
     private func weekdayAbbrev(_ date: Date) -> String {
-           let formatter = DateFormatter()
-           formatter.dateFormat = "EEE"
-           return formatter.string(from: date)
-       }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
+    }
     
     // MARK: - Y-axis tick helpers
     private func yAxisTicks(maxValue: Int, targetTicks: Int) -> [Int] {
@@ -850,16 +838,12 @@ class DashboardViewModel: ObservableObject {
     private func loadTodayData() {
 
         
-        // Monitor memory usage
-        let memoryUsage = getMemoryUsage()
-        
         // Load real data from Core Data
         loadTodayCheckIns()
         loadCurrentStreak()
         loadAverageMood()
         loadWeeklyTrendData()
-        
-        let memoryUsageAfter = getMemoryUsage()
+    
 
     }
     
@@ -944,115 +928,48 @@ class DashboardViewModel: ObservableObject {
         
         let calendar = Calendar.current
         let today = Date()
-  
         
-        // Find the first recording date
-        let firstRecordingRequest: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-        firstRecordingRequest.predicate = NSPredicate(format: "user == %@", user)
-        firstRecordingRequest.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: true)]
-        firstRecordingRequest.fetchLimit = 1
-        
-        
-        do {
-            let firstRecordings = try persistenceController.container.viewContext.fetch(firstRecordingRequest)
-     
-            
-            if let firstRecording = firstRecordings.first, let firstDate = firstRecording.timestamp {
-             
-                
-                // Start from the first recording date
-                let startDate = calendar.startOfDay(for: firstDate)
-                let daysSinceFirst = calendar.dateComponents([.day], from: startDate, to: today).day ?? 0
-                let daysToShow = min(max(daysSinceFirst + 1, 7), 30) // Show at least 7 days, max 30
-                
-                
-                // Limit to prevent memory issues
-                let safeDaysToShow = min(daysToShow, 14) // Cap at 14 days for safety
-        
-                
-                weeklyTrendData = (0..<safeDaysToShow).map { dayOffset in
-        
-                    
-                    guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else {
- 
-                        return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
-                    }
-                    
-                    let dayStart = calendar.startOfDay(for: date)
-                    let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? date
-                    
-                    
-                    let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-                    request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@ AND timestamp < %@", user, dayStart as NSDate, dayEnd as NSDate)
-                    
-                    // Add fetch limit to prevent memory issues
-                    request.fetchLimit = 100
-                    
-                    do {
-                        let results = try persistenceController.container.viewContext.fetch(request)
-
-                    
-                        
-                        // Calculate emotion counts for the chart
-                        let emotions = results.compactMap { entity -> EmotionCategory? in
-                            guard let emotionString = entity.primaryEmotion else { return nil }
-                            return EmotionCategory(rawValue: emotionString)
-                        }
-                        
-                        let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
-                            counts[emotion, default: 0] += 1
-                        }
-                        
-                        // Get primary and secondary emotion counts
-                        let sortedEmotions = emotionCounts.sorted { $0.value > $1.value }
-                        let primaryCount = sortedEmotions.first?.value ?? 0
-                        let secondaryCount = sortedEmotions.count > 1 ? sortedEmotions[1].value : 0
-                        
-                        
-                        let trendData = EmotionTrendData(
-                            date: date,
-                            checkInCount: results.count,
-                            hasData: !results.isEmpty,
-                            primaryEmotionCount: primaryCount,
-                            secondaryEmotionCount: secondaryCount
-                        )
-                        
-                        
-                        return trendData
-                    } catch {
-                  
-                        return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
-                    }
-                }
-                
-                
-                func formatDate(_ date: Date) -> String {
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "MMM d"
-                    return formatter.string(from: date)
-                }
-                
-            } else {
-          
-                // No data yet, show empty chart for last 7 days
-                weeklyTrendData = (0..<7).map { dayOffset in
-                    guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
-                        return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
-                    }
-                    return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
-                }.reversed()
-            }
-        } catch {
-
-
+        // Show only the current week's 7 daily points (no cross-week aggregation)
+        if let weekInterval = calendar.dateInterval(of: .weekOfYear, for: today) {
+            let startOfWeek = calendar.startOfDay(for: weekInterval.start)
             weeklyTrendData = (0..<7).map { dayOffset in
-                guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startOfWeek) else {
                     return EmotionTrendData(date: Date(), checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
                 }
-                return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
-            }.reversed()
+                let dayStart = calendar.startOfDay(for: date)
+                let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? date
+                
+                let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+                request.predicate = NSPredicate(format: "user == %@ AND timestamp >= %@ AND timestamp < %@", user, dayStart as NSDate, dayEnd as NSDate)
+                request.fetchLimit = 100
+                
+                do {
+                    let results = try persistenceController.container.viewContext.fetch(request)
+                    let emotions = results.compactMap { entity -> EmotionCategory? in
+                        guard let emotionString = entity.primaryEmotion else { return nil }
+                        return EmotionCategory(rawValue: emotionString)
+                    }
+                    let emotionCounts = emotions.reduce(into: [EmotionCategory: Int]()) { counts, emotion in
+                        counts[emotion, default: 0] += 1
+                    }
+                    let sortedEmotions = emotionCounts.sorted { $0.value > $1.value }
+                    let primaryCount = sortedEmotions.first?.value ?? 0
+                    let secondaryCount = sortedEmotions.count > 1 ? sortedEmotions[1].value : 0
+                    return EmotionTrendData(
+                        date: date,
+                        checkInCount: results.count,
+                        hasData: !results.isEmpty,
+                        primaryEmotionCount: primaryCount,
+                        secondaryEmotionCount: secondaryCount
+                    )
+                } catch {
+                    return EmotionTrendData(date: date, checkInCount: 0, hasData: false, primaryEmotionCount: 0, secondaryEmotionCount: 0)
+                }
+            }
+            return
         }
         
+        weeklyTrendData = []
     }
     
     private func calculateCurrentStreak(from emotionalData: [EmotionalDataEntity]) -> Int {

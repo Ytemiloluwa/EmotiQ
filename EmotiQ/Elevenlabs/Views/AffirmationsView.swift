@@ -11,6 +11,7 @@ import CoreHaptics
 import AVFoundation
 
 struct AffirmationsView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var affirmationEngine = AffirmationEngine.shared
     @StateObject private var themeManager = ThemeManager()
     
@@ -32,7 +33,6 @@ struct AffirmationsView: View {
     @State private var needsPurchase: Bool = false
     
     var body: some View {
-        NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header
@@ -62,18 +62,21 @@ struct AffirmationsView: View {
             )
             .navigationTitle("Affirmations")
             .navigationBarTitleDisplayMode(.large)
-            //            .toolbar {
-            //                ToolbarItem(placement: .navigationBarTrailing) {
-            //                    Button {
-            //                        showingCustomAffirmationCreator = true
-            //                        HapticManager.shared.buttonPress(.primary)
-            //                    } label: {
-            //                        Image(systemName: "plus.circle.fill")
-            //                            .font(.title2)
-            //                            .foregroundColor(ThemeColors.primaryText)
-            //                    }
-            //                }
-            //            }
+        
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        HapticManager.shared.selection()
+                        dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(ThemeColors.accent)
+                    }
+                }
+            }
+
             .navigationDestination(isPresented: $showingCustomAffirmationCreator) {
                 CustomAffirmationCreatorView()
             }
@@ -85,7 +88,6 @@ struct AffirmationsView: View {
                     AffirmationDetailView(affirmation: affirmation)
                 }
             }
-        }
         
         .onChange(of: purchaseManager.purchaseCompleted) { oldValue, newValue in
             if newValue {

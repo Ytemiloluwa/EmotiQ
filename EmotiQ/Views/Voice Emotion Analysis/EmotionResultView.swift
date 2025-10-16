@@ -26,6 +26,8 @@ struct EmotionResultView: View {
     @State private var pulseEmotionIcon = false
     @State private var confidenceAnimationProgress: Double = 0
     
+    @Environment(\.dismiss) private var dismiss
+    
     var body: some View {
         ZStack {
             // Background
@@ -47,7 +49,7 @@ struct EmotionResultView: View {
                     quickActionsSection
                     
                     // Coaching Preview
-                    coachingPreviewSection
+                    //coachingPreviewSection
                     
                     Spacer(minLength: 100)
                 }
@@ -57,6 +59,19 @@ struct EmotionResultView: View {
         }
         .navigationTitle("Analysis Result")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    hapticManager.selection()
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+            }
+        }
         .onAppear {
             startAnimationSequence()
         }
@@ -77,12 +92,12 @@ struct EmotionResultView: View {
         }
         .navigationDestination(isPresented: $showingInsights) {
             FeatureGateView(feature: .advancedAnalytics) {
-                InsightsView()
+                InsightsView(showBackButton: true)
             }
         }
         .navigationDestination(isPresented: $showingAllEmotionalPrompts) {
             FeatureGateView(feature: .personalizedCoaching) {
-                AllEmotionalPromptsView(viewModel: MicroInterventionsViewModel())
+                AllEmotionalPromptsView(viewModel: MicroInterventionsViewModel.shared)
             }
         }
         .navigationDestination(isPresented: $showingVoiceCloningSetup) {
@@ -301,15 +316,37 @@ struct EmotionResultView: View {
                     }
                 )
                 
-                EmotionActionButton(
-                    title: "Emotional Prompts",
-                    icon: "heart.circle",
-                    color: .green,
-                    action: {
-                        hapticManager.buttonPress(.primary)
-                        showingAllEmotionalPrompts = true
-                    }
-                )
+                Button(action: {
+        
+                     hapticManager.buttonPress(.primary)
+                     showingAllEmotionalPrompts = true
+                 }) {
+                     VStack(spacing: 12) {
+                         Image(systemName: "heart.circle")
+                             .font(.title2)
+                             .foregroundColor(.green)
+                             .frame(width: 32, height: 32)
+                         
+                         VStack(spacing: 4) {
+                             Text("Emotional Prompts")
+                                 .font(.subheadline)
+                                 .fontWeight(.semibold)
+                                 .foregroundColor(ThemeColors.primaryText)
+                         }
+                     }
+                     .frame(maxWidth: .infinity)
+                     .padding(.vertical, 20)
+                     .padding(.horizontal, 16)
+                     .background(
+                         RoundedRectangle(cornerRadius: 16)
+                             .fill(Color.green.opacity(themeManager.isDarkMode ? 0.15 : 0.08))
+                             .overlay(
+                                 RoundedRectangle(cornerRadius: 16)
+                                     .stroke(Color.green.opacity(0.2), lineWidth: 1)
+                             )
+                     )
+                 }
+                 .buttonStyle(PlainButtonStyle())
                 
                 EmotionActionButton(
                     title: "Set Goal",

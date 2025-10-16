@@ -12,13 +12,21 @@ struct InsightsView: View {
     @StateObject private var viewModel = InsightsViewModel()
     @StateObject private var pdfExportManager = ScreenshotPDFExportManager()
     @EnvironmentObject private var subscriptionService: SubscriptionService
+    @Environment(\.dismiss) private var dismiss
     @State private var showingSubscriptionPaywall = false
     @State private var showingShareSheet = false
     @State private var pdfURL: URL?
     @State private var showingSuccessAlert = false
     @State private var showProToast = false
     @State private var isExportPressed = false
+
     @EnvironmentObject private var themeManager: ThemeManager
+    
+    let showBackButton: Bool
+        
+    init(showBackButton: Bool = false) {
+        self.showBackButton = showBackButton
+    }
     
     var body: some View {
         
@@ -111,9 +119,22 @@ struct InsightsView: View {
                 .animation(.easeInOut(duration: 0.3), value: showProToast)
             }
         }
-        .navigationTitle("Insights")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(showBackButton)
         .toolbar(content: {
+            
+            if showBackButton {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(ThemeColors.accent)
+                    }
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     if subscriptionService.hasDataExport() {

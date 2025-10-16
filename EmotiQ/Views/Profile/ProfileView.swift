@@ -434,7 +434,6 @@ class ProfileViewModel: ObservableObject {
     @Published var showingInsights = false
     @Published var showingCheckIns = false
     
-    private let biometricService = BiometricAuthenticationService()
     private let persistenceController = PersistenceController.shared
     private var themeManager: ThemeManager?
     private var cancellables = Set<AnyCancellable>()
@@ -481,19 +480,25 @@ class ProfileViewModel: ObservableObject {
                 
                 if faceIDEnabled {
                     // Disable Face ID
-                    if securityManager.setFaceIDEnabled(false) {
-                        faceIDEnabled = false
+                    let saved = securityManager.setFaceIDEnabled(false)
+                    if saved {
+                        await MainActor.run { self.faceIDEnabled = false }
                     }
                 } else {
                     // Enable Face ID - first authenticate
                     let success = try await securityManager.authenticateWithBiometrics(reason: "Enable Face ID for EmotiQ")
-                    if success && securityManager.setFaceIDEnabled(true) {
-                        faceIDEnabled = true
+                    if success {
+                        let saved = securityManager.setFaceIDEnabled(true)
+                        if saved {
+                            await MainActor.run { self.faceIDEnabled = true }
+                        }
                     }
                 }
             } catch {
-                faceIDAlertMessage = error.localizedDescription
-                showingFaceIDAlert = true
+                await MainActor.run {
+                    self.faceIDAlertMessage = error.localizedDescription
+                    self.showingFaceIDAlert = true
+                }
             }
         }
     }
@@ -582,32 +587,7 @@ class ProfileViewModel: ObservableObject {
         calculateTotalInsights(for: user)
     }
     
-    //    private func loadTotalCheckIns(for user: User) {
-    //        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-    //        request.predicate = NSPredicate(format: "user == %@", user)
-    //
-    //        do {
-    //            let results = try persistenceController.container.viewContext.fetch(request)
-    //            totalCheckIns = results.count
-    //        } catch {
-    //
-    //            totalCheckIns = 0
-    //        }
-    //    }
-    //
-    //    private func loadCurrentStreak(for user: User) {
-    //        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-    //        request.predicate = NSPredicate(format: "user == %@", user)
-    //        request.sortDescriptors = [NSSortDescriptor(keyPath: \EmotionalDataEntity.timestamp, ascending: false)]
-    //
-    //        do {
-    //            let emotionalData = try persistenceController.container.viewContext.fetch(request)
-    //            currentStreak = calculateCurrentStreak(from: emotionalData)
-    //        } catch {
-    //
-    //            currentStreak = 0
-    //        }
-    //    }
+
     
     private func loadCompletedGoals(for user: User) {
         let request: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
@@ -748,101 +728,19 @@ class ProfileViewModel: ObservableObject {
     
     private func checkBiometricAvailability() {
         Task {
-            let isAvailable = await biometricService.isBiometricAvailable()
+            let isAvailable = await SecurityManager.shared.isBiometricAvailable()
             if !isAvailable && faceIDEnabled {
                 // Disable Face ID if not available
-                faceIDEnabled = false
-                UserDefaults.standard.set(false, forKey: "faceIDEnabled")
+                await MainActor.run {
+                    self.faceIDEnabled = false
+                    UserDefaults.standard.set(false, forKey: "faceIDEnabled")
+                }
             }
         }
     }
 }
 
-// MARK: - Biometric Authentication Service
-class BiometricAuthenticationService {
-    private let context = LAContext()
-    
-    func isBiometricAvailable() async -> Bool {
-        var error: NSError?
-        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
-    }
-    
-    func authenticateUser(reason: String) async throws -> Bool {
-        let context = LAContext()
-        
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
-            throw BiometricError.notAvailable
-        }
-        
-        do {
-            let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthenticationWithBiometrics,
-                localizedReason: reason
-            )
-            return success
-        } catch let error as LAError {
-            switch error.code {
-            case .userCancel, .systemCancel:
-                throw BiometricError.userCancelled
-            case .userFallback:
-                // User chose to enter passcode, but we need to verify it was successful
-                // Let's try to authenticate again with passcode fallback
-                return try await authenticateWithPasscode(reason: reason)
-            case .authenticationFailed:
-                throw BiometricError.authenticationFailed("Passcode verification failed")
-            default:
-                throw BiometricError.authenticationFailed(error.localizedDescription)
-            }
-        } catch {
-            throw BiometricError.authenticationFailed(error.localizedDescription)
-        }
-    }
-    
-    private func authenticateWithPasscode(reason: String) async throws -> Bool {
-        let context = LAContext()
-        
-        do {
-            let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: reason
-            )
-            return success
-        } catch let error as LAError {
-            switch error.code {
-            case .userCancel, .systemCancel:
-                throw BiometricError.userCancelled
-            case .authenticationFailed:
-                throw BiometricError.authenticationFailed("Incorrect passcode")
-            default:
-                throw BiometricError.authenticationFailed(error.localizedDescription)
-            }
-        }
-    }
-    
-    func getBiometricType() -> LABiometryType {
-        let context = LAContext()
-        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        return context.biometryType
-    }
-}
 
-// MARK: - Biometric Error
-enum BiometricError: LocalizedError {
-    case notAvailable
-    case authenticationFailed(String)
-    case userCancelled
-    
-    var errorDescription: String? {
-        switch self {
-        case .notAvailable:
-            return "Biometric authentication is not available on this device."
-        case .authenticationFailed(let message):
-            return "Authentication failed: \(message)"
-        case .userCancelled:
-            return "Authentication was cancelled."
-        }
-    }
-}
 
 // MARK: - Image Picker
 struct ImagePicker: UIViewControllerRepresentable {

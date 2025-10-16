@@ -163,15 +163,22 @@ struct AllEmotionalPromptsView: View {
     @EnvironmentObject private var hapticManager: HapticManager
     @State private var selectedCategory: EnhancedEmotionalPromptCategory = .all
     
+    @Environment(\.dismiss) private var dismiss
+    
+    init(viewModel: MicroInterventionsViewModel) {
+        self.viewModel = viewModel
+    }
+    
     var filteredPrompts: [EnhancedEmotionalPrompt] {
         if selectedCategory == .all {
             return viewModel.allEmotionalPrompts
         }
-        return viewModel.allEmotionalPrompts.filter { $0.category == selectedCategory }
+        let filtered = viewModel.allEmotionalPrompts.filter { $0.category == selectedCategory }
+        return filtered
     }
     
     var body: some View {
-        ZStack {
+        return ZStack {
             ThemeColors.primaryBackground
                 .ignoresSafeArea()
             
@@ -208,6 +215,19 @@ struct AllEmotionalPromptsView: View {
         }
         .navigationTitle("Emotional Prompts")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    hapticManager.impact(.light)
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+            }
+        }
     }
 }
 
@@ -697,7 +717,7 @@ extension MicroInterventionsViewModel {
 #Preview {
     NavigationStack {
         EmotionalPromptsSection(
-            viewModel: MicroInterventionsViewModel()
+            viewModel: MicroInterventionsViewModel.shared
         )
         .environmentObject(ThemeManager())
         .environmentObject(HapticManager.shared)

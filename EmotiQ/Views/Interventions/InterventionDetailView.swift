@@ -1301,7 +1301,7 @@ struct InterventionDetailView_Previews: PreviewProvider {
         
         InterventionDetailView(
             intervention: sampleIntervention,
-            viewModel: MicroInterventionsViewModel()
+            viewModel: MicroInterventionsViewModel.shared
         )
         .environmentObject(ThemeManager())
     }

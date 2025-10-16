@@ -346,23 +346,24 @@ struct PersistenceController {
         }
     
     private func calculateCurrentStreak(from emotionalData: [EmotionalDataEntity]) -> Int {
-            let calendar = Calendar.current
-            let sortedData = emotionalData.sorted { ($0.timestamp ?? Date()) > ($1.timestamp ?? Date()) }
-            var streak = 0
-            var currentDate = Date()
-            for data in sortedData {
-                guard let timestamp = data.timestamp else { continue }
-                let dataDate = calendar.startOfDay(for: timestamp)
-                let expectedDate = calendar.startOfDay(for: currentDate)
-                if calendar.isDate(dataDate, inSameDayAs: expectedDate) {
-                    streak += 1
-                    currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate) ?? currentDate
-                } else if calendar.dateInterval(of: .day, for: dataDate)?.start ?? dataDate < expectedDate {
-                    break
-                }
-            }
-            return streak
+        let calendar = Calendar.current
+        // Build a set of unique check-in days
+        let days: Set<Date> = Set(emotionalData.compactMap { entity in
+            guard let timestamp = entity.timestamp else { return nil }
+            return calendar.startOfDay(for: timestamp)
+        })
+        // No data -> no streak
+        guard let mostRecentDay = days.max() else { return 0 }
+        // Count consecutive days ending at the most recent check-in day
+        var streak = 0
+        var cursor = mostRecentDay
+        while days.contains(cursor) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
         }
+        return streak
+    }
     
     // MARK: - Intervention Streak Backfill
     func backfillInterventionStreaksIfNeeded() {
