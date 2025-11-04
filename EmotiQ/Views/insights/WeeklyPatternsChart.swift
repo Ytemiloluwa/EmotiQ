@@ -9,7 +9,7 @@ import SwiftUI
 import Charts
 
 struct WeeklyPatternsChart: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    let data: [WeeklyPatternData]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -17,17 +17,18 @@ struct WeeklyPatternsChart: View {
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            if viewModel.weeklyPatternData.isEmpty {
+            if data.isEmpty {
                 EmptyWeeklyPatternView()
             } else {
-                WeeklyChartContent(viewModel: viewModel)
+                WeeklyChartContent(data: data)
             }
         }
+        .transaction { $0.animation = nil }
     }
 }
 
 struct WeeklyChartContent: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    let data: [WeeklyPatternData]
     
     var body: some View {
         VStack(spacing: 12) {
@@ -41,10 +42,10 @@ struct WeeklyChartContent: View {
             }
             
             // Chart
-            WeeklyBarChart(data: viewModel.weeklyPatternData)
+            WeeklyBarChart(data: data)
             
             // Legend and summary
-            WeeklyChartLegend(data: viewModel.weeklyPatternData)
+            WeeklyChartLegend(data: data)
         }
         .frame(height: 250)
         .padding()
@@ -148,5 +149,5 @@ struct EmptyWeeklyPatternView: View {
 }
 
 #Preview {
-    WeeklyPatternsChart(viewModel: InsightsViewModel())
+    WeeklyPatternsChart(data: [])
 }

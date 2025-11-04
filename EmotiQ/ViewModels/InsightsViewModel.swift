@@ -142,11 +142,22 @@ class InsightsViewModel: ObservableObject {
         weeklyCheckIns = Int(user.weeklyCheckInsCount)
         currentStreak = Int(user.currentStreak)
         
-        // Load real emotional data from Core Data
+        // Fetch entities rapidly on main (small amount) then offload heavy parts
         let emotionalData = loadEmotionalData(for: user)
         
-        // Calculate insights from real data
+        // Compute lightweight insights synchronously (fast), then offload heavy voice decode
         calculateInsights(from: emotionalData, for: user)
+        
+        // Offload heavy voice features decoding and insights to background
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            let voiceData = self.buildVoiceCharacteristicsDataOffMain(from: emotionalData)
+            let voiceInsights = await self.generateVoiceInsights(from: voiceData)
+            await MainActor.run {
+                self.voiceCharacteristicsData = voiceData
+                self.voiceInsights = voiceInsights
+            }
+        }
     }
     
     private func loadEmotionalData(for user: User) -> [EmotionalDataEntity] {
@@ -234,9 +245,7 @@ class InsightsViewModel: ObservableObject {
         // Generate AI insights
         aiInsights = generateAIInsights(from: emotionalData, emotions: emotions)
         
-        // Generate voice characteristics data
-        voiceCharacteristicsData = generateVoiceCharacteristicsData(from: emotionalData)
-        voiceInsights = generateVoiceInsights(from: voiceCharacteristicsData)
+        // Defer heavy voice decoding off-main (done in loadRealData)
         
         // Calculate other metrics
         emotionalStability = calculateEmotionalStability(from: emotionalData)
@@ -248,6 +257,44 @@ class InsightsViewModel: ObservableObject {
         averageIntensity = calculateAverageIntensity(from: emotionalData)
         
         persistenceController.save()
+    }
+
+    // MARK: - Background voice decode
+    nonisolated private func buildVoiceCharacteristicsDataOffMain(from emotionalData: [EmotionalDataEntity]) -> [VoiceCharacteristicsDataPoint] {
+        // Copy minimal fields to avoid crossing thread-bound objects later
+        struct Record { let timestamp: Date; let emotion: EmotionCategory; let confidence: Double; let data: Data? }
+        let snapshot: [Record] = emotionalData.compactMap { entity in
+            guard let timestamp = entity.timestamp,
+                  let emotionString = entity.primaryEmotion,
+                  let emotion = EmotionCategory(rawValue: emotionString) else { return nil }
+            return Record(timestamp: timestamp, emotion: emotion, confidence: entity.confidence, data: entity.voiceFeaturesData)
+        }
+        var result: [VoiceCharacteristicsDataPoint] = []
+        result.reserveCapacity(snapshot.count)
+        let decoder = JSONDecoder()
+        for rec in snapshot {
+            guard let data = rec.data else { continue }
+            if let voiceFeatures = try? decoder.decode(VoiceFeatures.self, from: data) {
+                let point = VoiceCharacteristicsDataPoint(
+                    timestamp: rec.timestamp,
+                    pitch: voiceFeatures.pitch,
+                    energy: voiceFeatures.energy,
+                    spectralCentroid: voiceFeatures.spectralCentroid,
+                    jitter: voiceFeatures.jitter,
+                    shimmer: voiceFeatures.shimmer,
+                    formantFrequencies: voiceFeatures.formantFrequencies,
+                    harmonicToNoiseRatio: voiceFeatures.harmonicToNoiseRatio,
+                    zeroCrossingRate: voiceFeatures.zeroCrossingRate,
+                    spectralRolloff: voiceFeatures.spectralRolloff,
+                    voiceOnsetTime: voiceFeatures.voiceOnsetTime,
+                    emotion: rec.emotion,
+                    confidence: rec.confidence
+                )
+                result.append(point)
+            }
+        }
+        result.sort { $0.timestamp < $1.timestamp }
+        return result
     }
     
     private func resetToEmptyState() {

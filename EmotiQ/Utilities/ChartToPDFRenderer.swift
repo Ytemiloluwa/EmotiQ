@@ -28,7 +28,11 @@ struct ChartToPDFRenderer {
         // Render each section at the PDF content width and use actual heights
         var sectionImages: [UIImage] = []
         
-        if let overview = renderViewToImage(InsightsOverviewSection(viewModel: viewModel), targetWidth: contentWidth) {
+        if let overview = renderViewToImage(InsightsOverviewSection(
+            weeklyCheckIns: viewModel.weeklyCheckIns,
+            averageMood: viewModel.averageMood,
+            currentStreak: viewModel.currentStreak
+        ), targetWidth: contentWidth) {
             sectionImages.append(overview)
         }
         // Voice quality metrics only (avoid duplicating sub-sections)
@@ -38,19 +42,23 @@ struct ChartToPDFRenderer {
         if let pitchEnergy = renderViewToImage(PitchEnergyTrendsChart(data: viewModel.voiceCharacteristicsData), targetWidth: contentWidth) {
             sectionImages.append(pitchEnergy)
         }
-        if let emotionTrends = renderViewToImage(EmotionTrendsChart(viewModel: viewModel), targetWidth: contentWidth) {
+        if let emotionTrends = renderViewToImage(EmotionTrendsChart(data: viewModel.emotionIntensityData, uniqueEmotions: viewModel.uniqueEmotions), targetWidth: contentWidth) {
             sectionImages.append(emotionTrends)
         }
-        if let emotionDist = renderViewToImage(EmotionDistributionChart(viewModel: viewModel), targetWidth: contentWidth) {
+        if let emotionDist = renderViewToImage(EmotionDistributionChart(data: viewModel.emotionDistribution), targetWidth: contentWidth) {
             sectionImages.append(emotionDist)
         }
-        if let weekly = renderViewToImage(WeeklyPatternsChart(viewModel: viewModel), targetWidth: contentWidth) {
+        if let weekly = renderViewToImage(WeeklyPatternsChart(data: viewModel.weeklyPatternData), targetWidth: contentWidth) {
             sectionImages.append(weekly)
         }
         if let insights = renderViewToImage(VoiceInsightsCards(insights: viewModel.voiceInsights), targetWidth: contentWidth) {
             sectionImages.append(insights)
         }
-        if let today = renderViewToImage(TodaySummarySection(viewModel: viewModel), targetWidth: contentWidth) {
+        if let today = renderViewToImage(TodaySummarySection(
+            emotionalValence: viewModel.emotionalValence,
+            mostCommonEmotion: viewModel.mostCommonEmotion,
+            averageIntensity: viewModel.averageIntensity
+        ), targetWidth: contentWidth) {
             sectionImages.append(today)
         }
         
@@ -80,16 +88,24 @@ struct ChartToPDFRenderer {
         contentWidth: CGFloat
     ) -> [UIImage] {
         var images: [UIImage] = []
-        if let overview = renderViewToImage(InsightsOverviewSection(viewModel: viewModel), targetWidth: contentWidth) { images.append(overview) }
+        if let overview = renderViewToImage(InsightsOverviewSection(
+            weeklyCheckIns: viewModel.weeklyCheckIns,
+            averageMood: viewModel.averageMood,
+            currentStreak: viewModel.currentStreak
+        ), targetWidth: contentWidth) { images.append(overview) }
         if let voiceQuality = renderViewToImage(VoiceQualityMetricsView(data: viewModel.voiceCharacteristicsData), targetWidth: contentWidth) {
             images.append(voiceQuality)
         }
         if let pitchEnergy = renderViewToImage(PitchEnergyTrendsChart(data: viewModel.voiceCharacteristicsData), targetWidth: contentWidth) { images.append(pitchEnergy) }
-        if let emotionTrends = renderViewToImage(EmotionTrendsChart(viewModel: viewModel), targetWidth: contentWidth) { images.append(emotionTrends) }
-        if let emotionDist = renderViewToImage(EmotionDistributionChart(viewModel: viewModel), targetWidth: contentWidth) { images.append(emotionDist) }
-        if let weekly = renderViewToImage(WeeklyPatternsChart(viewModel: viewModel), targetWidth: contentWidth) { images.append(weekly) }
+        if let emotionTrends = renderViewToImage(EmotionTrendsChart(data: viewModel.emotionIntensityData, uniqueEmotions: viewModel.uniqueEmotions), targetWidth: contentWidth) { images.append(emotionTrends) }
+        if let emotionDist = renderViewToImage(EmotionDistributionChart(data: viewModel.emotionDistribution), targetWidth: contentWidth) { images.append(emotionDist) }
+        if let weekly = renderViewToImage(WeeklyPatternsChart(data: viewModel.weeklyPatternData), targetWidth: contentWidth) { images.append(weekly) }
         if let insights = renderViewToImage(VoiceInsightsCards(insights: viewModel.voiceInsights), targetWidth: contentWidth) { images.append(insights) }
-        if let today = renderViewToImage(TodaySummarySection(viewModel: viewModel), targetWidth: contentWidth) { images.append(today) }
+        if let today = renderViewToImage(TodaySummarySection(
+            emotionalValence: viewModel.emotionalValence,
+            mostCommonEmotion: viewModel.mostCommonEmotion,
+            averageIntensity: viewModel.averageIntensity
+        ), targetWidth: contentWidth) { images.append(today) }
         return images
     }
     
@@ -100,7 +116,10 @@ struct ChartToPDFRenderer {
         size: CGSize
     ) -> UIImage? {
         
-        let chartView = EmotionTrendsChart(viewModel: viewModel)
+        let chartView = EmotionTrendsChart(
+            data: viewModel.emotionIntensityData,
+            uniqueEmotions: viewModel.uniqueEmotions
+        )
         let result = renderSwiftUIView(chartView, size: size)
         
         return result
@@ -111,7 +130,7 @@ struct ChartToPDFRenderer {
         size: CGSize
     ) -> UIImage? {
         
-        let chartView = EmotionDistributionChart(viewModel: viewModel)
+        let chartView = EmotionDistributionChart(data: viewModel.emotionDistribution)
         let result = renderSwiftUIView(chartView, size: size)
         
         return result
@@ -122,7 +141,7 @@ struct ChartToPDFRenderer {
         size: CGSize
     ) -> UIImage? {
         
-        let chartView = WeeklyPatternsChart(viewModel: viewModel)
+        let chartView = WeeklyPatternsChart(data: viewModel.weeklyPatternData)
         let result = renderSwiftUIView(chartView, size: size)
         
         return result
@@ -133,7 +152,10 @@ struct ChartToPDFRenderer {
         size: CGSize
     ) -> UIImage? {
         
-        let chartView = VoiceCharacteristicsSection(viewModel: viewModel)
+        let chartView = VoiceCharacteristicsSection(
+            data: viewModel.voiceCharacteristicsData,
+            insights: viewModel.voiceInsights
+        )
         let result = renderSwiftUIView(chartView, size: size)
         
         return result
@@ -178,7 +200,11 @@ struct ChartToPDFRenderer {
         size: CGSize
     ) -> UIImage? {
         
-        let chartView = InsightsOverviewSection(viewModel: viewModel)
+        let chartView = InsightsOverviewSection(
+            weeklyCheckIns: viewModel.weeklyCheckIns,
+            averageMood: viewModel.averageMood,
+            currentStreak: viewModel.currentStreak
+        )
         let result = renderSwiftUIView(chartView, size: size)
         
         return result
@@ -189,7 +215,11 @@ struct ChartToPDFRenderer {
         size: CGSize
     ) -> UIImage? {
         
-        let chartView = TodaySummarySection(viewModel: viewModel)
+        let chartView = TodaySummarySection(
+            emotionalValence: viewModel.emotionalValence,
+            mostCommonEmotion: viewModel.mostCommonEmotion,
+            averageIntensity: viewModel.averageIntensity
+        )
         let result = renderSwiftUIView(chartView, size: size)
         
         return result

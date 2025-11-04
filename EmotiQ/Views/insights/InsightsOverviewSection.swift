@@ -9,7 +9,9 @@ import Foundation
 import SwiftUI
 
 struct InsightsOverviewSection: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    let weeklyCheckIns: Int
+    let averageMood: EmotionCategory
+    let currentStreak: Int
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -20,7 +22,7 @@ struct InsightsOverviewSection: View {
             HStack(spacing: 15) {
                 OverviewCard(
                     title: "This Week",
-                    value: "\(viewModel.weeklyCheckIns)",
+                    value: "\(weeklyCheckIns)",
                     subtitle: "Check-ins",
                     icon: "checkmark.circle.fill",
                     color: .green
@@ -28,15 +30,15 @@ struct InsightsOverviewSection: View {
                 
                 OverviewCard(
                     title: "Avg Mood",
-                    value: viewModel.averageMood.emoji,
-                    subtitle: viewModel.averageMood.displayName,
+                    value: averageMood.emoji,
+                    subtitle: averageMood.displayName,
                     icon: "person.fill",
                     color: .gray
                 )
                 
                 OverviewCard(
                     title: "Streak",
-                    value: "\(viewModel.currentStreak)",
+                    value: "\(currentStreak)",
                     subtitle: "Days",
                     icon: "flame.fill",
                     color: .orange
@@ -83,5 +85,5 @@ struct OverviewCard: View {
 }
 
 #Preview {
-    InsightsOverviewSection(viewModel: InsightsViewModel())
+    InsightsOverviewSection(weeklyCheckIns: 3, averageMood: .neutral, currentStreak: 2)
 }

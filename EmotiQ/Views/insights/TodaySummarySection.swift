@@ -9,8 +9,16 @@ import Foundation
 import SwiftUI
 
 // Enhanced version with additional visual effects
-struct TodaySummarySection: View {
-    @ObservedObject var viewModel: InsightsViewModel
+struct TodaySummarySection: View, Equatable {
+    static func == (lhs: TodaySummarySection, rhs: TodaySummarySection) -> Bool {
+        lhs.emotionalValence == rhs.emotionalValence &&
+        lhs.mostCommonEmotion == rhs.mostCommonEmotion &&
+        lhs.averageIntensity == rhs.averageIntensity
+    }
+    
+    let emotionalValence: EmotionValence
+    let mostCommonEmotion: EmotionCategory
+    let averageIntensity: EmotionIntensity
     @State private var isVisible = false
     @State private var animateCards = false
     @State private var gradientOffset = 0.0
@@ -52,28 +60,28 @@ struct TodaySummarySection: View {
             VStack(spacing: 16) {
                 SummaryRowPremium(
                     title: "Emotional Valence",
-                    value: viewModel.emotionalValence.displayName,
-                    subtitle: viewModel.emotionalValence.emoji,
-                    icon: viewModel.emotionalValence.icon,
-                    color: viewModel.emotionalValence.color,
+                    value: emotionalValence.displayName,
+                    subtitle: emotionalValence.emoji,
+                    icon: emotionalValence.icon,
+                    color: emotionalValence.color,
                     animationDelay: 0.2
                 )
                 
                 SummaryRowPremium(
                     title: "Dominant Emotion",
-                    value: viewModel.mostCommonEmotion.displayName,
-                    subtitle: viewModel.mostCommonEmotion.emoji,
+                    value: mostCommonEmotion.displayName,
+                    subtitle: mostCommonEmotion.emoji,
                     icon: "brain.head.profile",
-                    color: viewModel.mostCommonEmotion.hexcolor,
+                    color: mostCommonEmotion.hexcolor,
                     animationDelay: 0.4
                 )
                 
                 SummaryRowPremium(
                     title: "Emotional Intensity",
-                    value: viewModel.averageIntensity.IntensitydisplayName,
+                    value: averageIntensity.IntensitydisplayName,
                     subtitle: "Average Level",
                     icon: "waveform.path.ecg",
-                    color: viewModel.averageIntensity.Intensitycolor,
+                    color: averageIntensity.Intensitycolor,
                     animationDelay: 0.6
                 )
             }
@@ -99,6 +107,7 @@ struct TodaySummarySection: View {
             )
             .animation(.spring(response: 1.0, dampingFraction: 0.8).delay(0.3), value: animateCards)
         }
+        .transaction { $0.animation = nil }
         .onAppear {
             withAnimation {
                 isVisible = true
@@ -252,8 +261,11 @@ struct SummaryRowPremium: View {
 
 #Preview {
     VStack(spacing: 30) {
-        TodaySummarySection(viewModel: InsightsViewModel())
-        
+        TodaySummarySection(
+            emotionalValence: .neutral,
+            mostCommonEmotion: .neutral,
+            averageIntensity: .medium
+        )
     }
     .padding()
 }

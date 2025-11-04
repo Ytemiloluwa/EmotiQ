@@ -452,7 +452,9 @@ class ProfileViewModel: ObservableObject {
         // Observe changes to isDarkMode
         themeManager.$isDarkMode
             .receive(on: DispatchQueue.main)
-            .assign(to: \.darkModeEnabled, on: self)
+            .sink { [weak self] v in
+                self?.darkModeEnabled = v
+            }
             .store(in: &cancellables)
     }
     

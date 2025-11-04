@@ -82,13 +82,29 @@ struct InsightsView: View {
             .ignoresSafeArea()
             
             ScrollView {
-                VStack(spacing: 20) {
-                    InsightsOverviewSection(viewModel: viewModel)
-                    VoiceCharacteristicsSection(viewModel: viewModel)
-                    EmotionTrendsChart(viewModel: viewModel)
-                    EmotionDistributionChart(viewModel: viewModel)
-                    WeeklyPatternsChart(viewModel: viewModel)
-                    TodaySummarySection(viewModel: viewModel)
+                LazyVStack(spacing: 20) {
+                    InsightsOverviewSection(
+                        weeklyCheckIns: viewModel.weeklyCheckIns,
+                        averageMood: viewModel.averageMood,
+                        currentStreak: viewModel.currentStreak
+                    )
+                    VoiceCharacteristicsSection(
+                        data: viewModel.voiceCharacteristicsData,
+                        insights: viewModel.voiceInsights
+                    )
+        
+                    EmotionTrendsChart(
+                        data: viewModel.emotionIntensityData,
+                        uniqueEmotions: viewModel.uniqueEmotions
+                    )
+                    EmotionDistributionChart(data: viewModel.emotionDistribution)
+                    WeeklyPatternsChart(data: viewModel.weeklyPatternData)
+
+                    TodaySummarySection(
+                        emotionalValence: viewModel.emotionalValence,
+                        mostCommonEmotion: viewModel.mostCommonEmotion,
+                        averageIntensity: viewModel.averageIntensity
+                    )
                     Spacer(minLength: 100)
                 }
                 .frame(maxWidth: 900)

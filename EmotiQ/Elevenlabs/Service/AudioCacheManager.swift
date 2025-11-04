@@ -24,7 +24,7 @@ class AudioCacheManager: ObservableObject {
     private let maxCacheAge: TimeInterval = 7 * 24 * 60 * 60 // 7 days
     
     private var audioCache: [String: CachedAudioItem] = [:]
-    private var preloadQueue = DispatchQueue(label: "audio.preload", qos: .utility)
+    private let ioQueue = DispatchQueue(label: "audio.cache.io", qos: .utility)
     private var cancellables = Set<AnyCancellable>()
     
     // Common affirmations and prompts to preload
@@ -60,9 +60,49 @@ class AudioCacheManager: ObservableObject {
         cacheDirectory = documentsPath.appendingPathComponent("AudioCache")
         
         createCacheDirectoryIfNeeded()
-        loadCacheIndex()
-        cleanupExpiredCache()
-        calculateCacheSize()
+        // Perform IO off-main
+        Task.detached { [ioQueue, cacheDirectory] in
+            // Load index file in background
+            let items: [CachedAudioItem] = {
+                let indexURL = cacheDirectory.appendingPathComponent("cache_index.json")
+                guard FileManager.default.fileExists(atPath: indexURL.path) else { return [] }
+                do {
+                    let data = try Data(contentsOf: indexURL)
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    return (try? decoder.decode([CachedAudioItem].self, from: data)) ?? []
+                } catch { return [] }
+            }()
+            await MainActor.run {
+                // Rebuild cache dictionary on main
+                for item in items {
+                    if FileManager.default.fileExists(atPath: item.fileURL.path) {
+                        self.audioCache[item.key] = item
+                    }
+                }
+                self.calculateCacheSize()
+            }
+            // Cleanup expired files in background
+            let cutoffDate = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+            var keysToRemove: [String] = []
+            await MainActor.run {
+                for (key, item) in self.audioCache where item.lastAccessed < cutoffDate {
+                    keysToRemove.append(key)
+                }
+            }
+            for key in keysToRemove {
+                if let url = await MainActor.run(body: { self.audioCache[key]?.fileURL }) {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+            if !keysToRemove.isEmpty {
+                await MainActor.run {
+                    for key in keysToRemove { self.audioCache.removeValue(forKey: key) }
+                    self.calculateCacheSize()
+                }
+                await self.saveCacheIndexAsync()
+            }
+        }
         
         // Start preloading common content
         // Task {
@@ -85,13 +125,13 @@ class AudioCacheManager: ObservableObject {
         guard fileManager.fileExists(atPath: cachedItem.fileURL.path) else {
             // Remove from cache if file is missing
             audioCache.removeValue(forKey: cacheKey)
-            saveCacheIndex()
+            Task { await saveCacheIndexAsync() }
             return nil
         }
         
         // Update last accessed time
         audioCache[cacheKey]?.lastAccessed = Date()
-        saveCacheIndex()
+        Task { await saveCacheIndexAsync() }
         
         return cachedItem.fileURL
     }
@@ -128,8 +168,8 @@ class AudioCacheManager: ObservableObject {
         // Clean up if cache is too large
         await cleanupCacheIfNeeded()
         
-        // Save cache index
-        saveCacheIndex()
+        // Save cache index asynchronously
+        Task { await saveCacheIndexAsync() }
         
         return fileURL
     }
@@ -207,7 +247,7 @@ class AudioCacheManager: ObservableObject {
         await updateCacheMetrics()
         
         // Save empty index
-        saveCacheIndex()
+        Task { await saveCacheIndexAsync() }
     }
     
     /// Get cache statistics
@@ -251,73 +291,44 @@ class AudioCacheManager: ObservableObject {
         }
     }
     
-    private func loadCacheIndex() {
+    private func saveCacheIndexAsync() async {
         let indexURL = cacheDirectory.appendingPathComponent("cache_index.json")
-        
-        guard fileManager.fileExists(atPath: indexURL.path) else {
-            return
-        }
-        
-        do {
-            let data = try Data(contentsOf: indexURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            
-            let cacheItems = try decoder.decode([CachedAudioItem].self, from: data)
-            
-            // Rebuild cache dictionary
-            for item in cacheItems {
-                // Verify file still exists
-                if fileManager.fileExists(atPath: item.fileURL.path) {
-                    audioCache[item.key] = item
-                }
+        let items = Array(audioCache.values)
+        ioQueue.async {
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(items)
+                try data.write(to: indexURL)
+            } catch {
+                // ignore IO errors
             }
-            
-        } catch {
-      
-        }
-    }
-    
-    private func saveCacheIndex() {
-        let indexURL = cacheDirectory.appendingPathComponent("cache_index.json")
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            
-            let cacheItems = Array(audioCache.values)
-            let data = try encoder.encode(cacheItems)
-            
-            try data.write(to: indexURL)
-        } catch {
-           
         }
     }
     
     private func cleanupExpiredCache() {
-        let cutoffDate = Date().addingTimeInterval(-maxCacheAge)
-        var itemsToRemove: [String] = []
-        
-        for (key, item) in audioCache {
-            if item.lastAccessed < cutoffDate {
-                itemsToRemove.append(key)
-                
-                // Remove file
-                do {
-                    try fileManager.removeItem(at: item.fileURL)
-                } catch {
-                    
+        // Schedule async cleanup to avoid blocking main
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            let cutoffDate = Date().addingTimeInterval(-self.maxCacheAge)
+            var itemsToRemove: [String] = []
+            await MainActor.run {
+                for (key, item) in self.audioCache where item.lastAccessed < cutoffDate {
+                    itemsToRemove.append(key)
                 }
             }
-        }
-        
-        // Remove from cache
-        for key in itemsToRemove {
-            audioCache.removeValue(forKey: key)
-        }
-        
-        if !itemsToRemove.isEmpty {
-            saveCacheIndex()
+            for key in itemsToRemove {
+                if let url = await MainActor.run(body: { self.audioCache[key]?.fileURL }) {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+            if !itemsToRemove.isEmpty {
+                await MainActor.run {
+                    for key in itemsToRemove { self.audioCache.removeValue(forKey: key) }
+                    self.calculateCacheSize()
+                }
+                await self.saveCacheIndexAsync()
+            }
         }
     }
     
@@ -352,7 +363,7 @@ class AudioCacheManager: ObservableObject {
         }
         
         if !itemsToRemove.isEmpty {
-            saveCacheIndex()
+            Task { await saveCacheIndexAsync() }
             await updateCacheMetrics()
         }
     }

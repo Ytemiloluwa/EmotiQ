@@ -887,10 +887,21 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func loadCurrentStreak() {
-        
         guard let user = persistenceController.getCurrentUser() else { currentStreak = 0; return }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        if let last = user.lastCheckInDate {
+            let lastDay = calendar.startOfDay(for: last)
+            // If the last check-in was earlier than yesterday, streak is broken -> reset to 0
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), lastDay < yesterday {
+                currentStreak = 0
+                // Persist reset to keep UI consistent across tabs
+                user.currentStreak = 0
+                persistenceController.save()
+                return
+            }
+        }
         currentStreak = Int(user.currentStreak)
-   
     }
     
     private func loadAverageMood() {

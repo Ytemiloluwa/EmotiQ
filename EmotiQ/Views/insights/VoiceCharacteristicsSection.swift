@@ -9,7 +9,8 @@ import SwiftUI
 import Charts
 
 struct VoiceCharacteristicsSection: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    let data: [VoiceCharacteristicsDataPoint]
+    let insights: [VoiceInsight]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -17,15 +18,15 @@ struct VoiceCharacteristicsSection: View {
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            if viewModel.voiceCharacteristicsData.isEmpty {
+            if data.isEmpty {
                 EmptyVoiceCharacteristicsView()
             } else {
                 VStack(spacing: 24) {
                     // Voice Quality Metrics
-                    VoiceQualityMetricsView(data: viewModel.voiceCharacteristicsData)
+                    VoiceQualityMetricsView(data: data)
                     
                     // Pitch and Energy Trends
-                    PitchEnergyTrendsChart(data: viewModel.voiceCharacteristicsData)
+                    PitchEnergyTrendsChart(data: data)
                     
                     // Voice Stability Analysis
                     //VoiceStabilityChart(data: viewModel.voiceCharacteristicsData)
@@ -34,10 +35,11 @@ struct VoiceCharacteristicsSection: View {
                     //FormantAnalysisChart(data: viewModel.voiceCharacteristicsData)
                     
                     // Voice Insights
-                    VoiceInsightsCards(insights: viewModel.voiceInsights)
+                    VoiceInsightsCards(insights: insights)
                 }
             }
         }
+        .transaction { $0.animation = nil }
     }
 }
 
@@ -155,50 +157,29 @@ struct VoiceMetricCard: View {
 struct PitchEnergyTrendsChart: View {
     let data: [VoiceCharacteristicsDataPoint]
     
-    // Aggregate data by date for better visualization
-    private var aggregatedData: [DateAggregatedData] {
+    @State private var aggregatedData: [DateAggregatedData] = []
+    
+    private func computeAggregated(_ input: [VoiceCharacteristicsDataPoint]) -> [DateAggregatedData] {
         let calendar = Calendar.current
-        let groupedData = Dictionary(grouping: data) { point in
-            calendar.startOfDay(for: point.timestamp)
-        }
-        
-        let realData = groupedData.map { date, points in
+        let grouped = Dictionary(grouping: input) { calendar.startOfDay(for: $0.timestamp) }
+        let real = grouped.map { date, points in
             let avgPitch = points.map { $0.pitch }.reduce(0, +) / Double(points.count)
             let avgEnergy = points.map { $0.energy }.reduce(0, +) / Double(points.count)
-            
-            return DateAggregatedData(
-                date: date,
-                pitch: avgPitch,
-                energy: avgEnergy,
-                recordingCount: points.count
-            )
+            return DateAggregatedData(date: date, pitch: avgPitch, energy: avgEnergy, recordingCount: points.count)
         }.sorted { $0.date < $1.date }
-        
-        // If we have data, show from first recording date + next 6 days
-        if !realData.isEmpty {
-            let firstDate = realData.first!.date
-            let startDate = calendar.startOfDay(for: firstDate)
-            
-            var allDates: [DateAggregatedData] = []
-            for dayOffset in 0..<7 {
-                if let date = calendar.date(byAdding: .day, value: dayOffset, to: startDate) {
-                    if let existingData = realData.first(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
-                        allDates.append(existingData)
-                    } else {
-                        // Add empty data point for missing days
-                        allDates.append(DateAggregatedData(
-                            date: date,
-                            pitch: 0,
-                            energy: 0,
-                            recordingCount: 0
-                        ))
-                    }
+        guard !real.isEmpty else { return real }
+        let start = calendar.startOfDay(for: real.first!.date)
+        var all: [DateAggregatedData] = []
+        for offset in 0..<7 {
+            if let date = calendar.date(byAdding: .day, value: offset, to: start) {
+                if let existing = real.first(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
+                    all.append(existing)
+                } else {
+                    all.append(DateAggregatedData(date: date, pitch: 0, energy: 0, recordingCount: 0))
                 }
             }
-            return allDates
         }
-        
-        return realData
+        return all
     }
     
     var body: some View {
@@ -208,9 +189,8 @@ struct PitchEnergyTrendsChart: View {
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
             
-
-            
-            if aggregatedData.isEmpty {
+            let agg = aggregatedData.isEmpty ? computeAggregated(data) : aggregatedData
+            if agg.isEmpty {
                 Text("No voice data available")
                     .foregroundColor(.secondary)
                     .frame(height: 200)
@@ -245,10 +225,10 @@ struct PitchEnergyTrendsChart: View {
 
                                     // Histogram bars
                                     HStack(alignment: .bottom, spacing: 4) {
-                                        ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
+                                        ForEach(Array(agg.enumerated()), id: \.offset) { index, item in
                                             let width = geometry.size.width
                                             let height = geometry.size.height
-                                            let barWidth = (width - CGFloat(aggregatedData.count - 1) * 4) / CGFloat(aggregatedData.count)
+                                            let barWidth = (width - CGFloat(agg.count - 1) * 4) / CGFloat(agg.count)
 
                                             HStack(alignment: .bottom, spacing: 2) {
                                                 // Pitch bar (blue)
@@ -283,12 +263,12 @@ struct PitchEnergyTrendsChart: View {
                     HStack(spacing: 0) {
                         Spacer().frame(width: 33) // 25 (Y-axis) + 8 (inter-item spacing)
                         HStack {
-                            ForEach(Array(aggregatedData.enumerated()), id: \.offset) { index, item in
+                            ForEach(Array(agg.enumerated()), id: \.offset) { index, item in
                                 Text(formatDate(item.date))
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                                 
-                                if index < aggregatedData.count - 1 {
+                                if index < agg.count - 1 {
                                     Spacer()
                                 }
                             }
@@ -324,6 +304,10 @@ struct PitchEnergyTrendsChart: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.regularMaterial)
         )
+        .task(id: data) {
+            aggregatedData = computeAggregated(data)
+        }
+        .transaction { $0.animation = nil }
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -572,6 +556,6 @@ struct EmptyVoiceCharacteristicsView: View {
 }
 
 #Preview {
-    VoiceCharacteristicsSection(viewModel: InsightsViewModel())
+    VoiceCharacteristicsSection(data: [], insights: [])
         .padding()
 }

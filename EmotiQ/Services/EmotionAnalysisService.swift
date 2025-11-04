@@ -32,57 +32,72 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
                 return
             }
             
-            // Start recording (permissions already handled by VoiceRecordingService)
-            self.voiceRecordingService.startRecording()
+            let publisher = self.voiceRecordingService.startRecording()
                 .mapError { $0 as Error }
-                .flatMap { _ in
-                    // Wait for minimum recording duration and then stop
-                    self.voiceRecordingService.recordingDuration
-                        .filter { $0 >= 3.0 } // Minimum 3 seconds for analysis
+                .flatMap { [weak self] _ -> AnyPublisher<TimeInterval, Error> in
+                    guard let self = self else {
+                        return Fail(error: EmotionAnalysisError.serviceUnavailable).eraseToAnyPublisher()
+                    }
+                    return self.voiceRecordingService.recordingDuration
+                        .filter { $0 >= 3.0 }
                         .first()
-                        .flatMap { _ in
-                            self.voiceRecordingService.stopRecording()
-                                .mapError { $0 as Error }
-                        }
+                        .setFailureType(to: Error.self)
+                        .eraseToAnyPublisher()
                 }
-                .flatMap { recordingURL in
-                    // Validate audio quality
-                    self.voiceRecordingService.validateAudioQuality(url: recordingURL)
-                        .flatMap { quality in
-                            // Analyze emotion with quality information
-                            Future { promise in
-                                Task {
-                                    do {
-                                        let result = try await self.emotionService.analyzeEmotion(from: recordingURL)
-                                        
-                                        let emotionalData = EmotionalData(
-                                            timestamp: result.timestamp,
-                                            primaryEmotion: self.convertEmotionCategoryToType(result.primaryEmotion),
-                                            confidence: result.confidence,
-                                            intensity: result.confidence,
-                                            voiceFeatures: self.createRealVoiceFeatures(from: result),
-                                            context: self.createEmotionalContext()
-                                        )
-                                        
-                                        promise(.success(emotionalData))
-                                    } catch let emotionError as EmotionAnalysisError {
-                                        // PRODUCTION: Handle specific emotion analysis errors
-                                        promise(.failure(emotionError))
-                                    } catch let voiceError as VoiceRecordingError {
-                                        // PRODUCTION: Handle voice recording errors
-                                        promise(.failure(voiceError))
-                                    } catch let audioError as AudioProcessingError {
-                                        // PRODUCTION: Handle audio processing errors
-                                        promise(.failure(audioError))
-                                    } catch {
-                                        // PRODUCTION: Handle any other unexpected errors
-                                        let analysisError = EmotionAnalysisError.analysisFailure(error.localizedDescription)
-                                        promise(.failure(analysisError))
-                                    }
-                                }
+                .flatMap { [weak self] _ -> AnyPublisher<URL, Error> in
+                    guard let self = self else {
+                        return Fail(error: EmotionAnalysisError.serviceUnavailable).eraseToAnyPublisher()
+                    }
+                    return self.voiceRecordingService.stopRecording()
+                        .mapError { $0 as Error }
+                        .eraseToAnyPublisher()
+                }
+                .flatMap { [weak self] recordingURL -> AnyPublisher<(URL, VoiceQuality), Error> in
+                    guard let self = self else {
+                        return Fail(error: EmotionAnalysisError.serviceUnavailable).eraseToAnyPublisher()
+                    }
+                    return self.voiceRecordingService.validateAudioQuality(url: recordingURL)
+                        .map { quality in (recordingURL, quality) }
+                        .eraseToAnyPublisher()
+                }
+                .flatMap { [weak self] (recordingURL, _) -> AnyPublisher<EmotionalData, Error> in
+                    guard let self = self else {
+                        return Fail(error: EmotionAnalysisError.serviceUnavailable).eraseToAnyPublisher()
+                    }
+                    return Future<EmotionalData, Error> { [weak self] promise in
+                        guard let self = self else {
+                            promise(.failure(EmotionAnalysisError.serviceUnavailable))
+                            return
+                        }
+                        Task {
+                            do {
+                                let result = try await self.emotionService.analyzeEmotion(from: recordingURL)
+                                let emotionalData = EmotionalData(
+                                    timestamp: result.timestamp,
+                                    primaryEmotion: self.convertEmotionCategoryToType(result.primaryEmotion),
+                                    confidence: result.confidence,
+                                    intensity: result.confidence,
+                                    voiceFeatures: self.createRealVoiceFeatures(from: result),
+                                    context: self.createEmotionalContext()
+                                )
+                                promise(.success(emotionalData))
+                            } catch let emotionError as EmotionAnalysisError {
+                                promise(.failure(emotionError))
+                            } catch let voiceError as VoiceRecordingError {
+                                promise(.failure(voiceError))
+                            } catch let audioError as AudioProcessingError {
+                                promise(.failure(audioError))
+                            } catch {
+                                let analysisError = EmotionAnalysisError.analysisFailure(error.localizedDescription)
+                                promise(.failure(analysisError))
                             }
                         }
+                    }
+                    .eraseToAnyPublisher()
                 }
+                .eraseToAnyPublisher()
+
+            let cancellable = publisher
                 .sink(
                     receiveCompletion: { completion in
                         if case .failure(let error) = completion {
@@ -93,7 +108,8 @@ class EmotionAnalysisService: EmotionAnalysisServiceProtocol {
                         promise(.success(emotionalData))
                     }
                 )
-                .store(in: &self.cancellables)
+
+            self.cancellables.insert(cancellable)
         }
         .eraseToAnyPublisher()
     }

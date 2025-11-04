@@ -9,7 +9,8 @@ import SwiftUI
 import Charts
 
 struct EmotionTrendsChart: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    let data: [EmotionIntensityDataPoint]
+    let uniqueEmotions: [EmotionCategory]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -18,12 +19,13 @@ struct EmotionTrendsChart: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
-            if viewModel.emotionIntensityData.isEmpty {
+            if data.isEmpty {
                 EmptyEmotionTrendsView()
             } else {
-                EmotionIntensityHeatmapContent(data: viewModel.emotionIntensityData, uniqueEmotions: viewModel.uniqueEmotions)
+                EmotionIntensityHeatmap(data: data, uniqueEmotions: uniqueEmotions)
             }
         }
+        .transaction { $0.animation = nil }
     }
 }
 
@@ -71,37 +73,7 @@ struct EmotionIntensityChartContent: View {
                 }
             }
             
-            // Enhanced Emotion Intensity Chart (Lines + Areas + Points)
-            Chart(filteredData) { dataPoint in
-                // Line chart for emotion intensity over time
-                LineMark(
-                    x: .value("Time", dataPoint.timestamp),
-                    y: .value("Intensity", dataPoint.intensity)
-                )
-                .foregroundStyle(dataPoint.emotion.color)
-                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
-                .symbol(by: .value("Emotion", dataPoint.emotion.displayName))
-                
-                // Area chart for better visualization
-                AreaMark(
-                    x: .value("Time", dataPoint.timestamp),
-                    y: .value("Intensity", dataPoint.intensity)
-                )
-                .foregroundStyle(dataPoint.emotion.color.opacity(0.2))
-                .symbol(by: .value("Emotion", dataPoint.emotion.displayName))
-                
-                // Point markers for data points
-                PointMark(
-                    x: .value("Time", dataPoint.timestamp),
-                    y: .value("Intensity", dataPoint.intensity)
-                )
-                .foregroundStyle(dataPoint.emotion.color)
-                .symbolSize(60)
-                .symbol(by: .value("Emotion", dataPoint.emotion.displayName))
-                
-                // Make points focusable when a single emotion is selected
-                .opacity(selectedEmotion == nil ? 0.8 : 1.0)
-            }
+            intensityChart
             .frame(height: 220)
             // Intensity bands and labels to aid comprehension
             .chartOverlay { proxy in
@@ -187,7 +159,6 @@ struct EmotionIntensityChartContent: View {
             }
             .chartYAxisLabel("Intensity", position: .leading)
             .chartXAxisLabel("Date", position: .bottom)
-            .animation(.easeInOut(duration: 0.8), value: data)
             
             if !uniqueEmotions.isEmpty {
                 EmotionIntensityLegend(emotions: uniqueEmotions)
@@ -198,43 +169,41 @@ struct EmotionIntensityChartContent: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.regularMaterial)
         )
+        .transaction { $0.animation = nil }
+    }
+
+    @ViewBuilder
+    private var intensityChart: some View {
+        let points = filteredData
+        Chart(points) { dataPoint in
+            LineMark(
+                x: .value("Time", dataPoint.timestamp),
+                y: .value("Intensity", dataPoint.intensity)
+            )
+            .foregroundStyle(dataPoint.emotion.color)
+            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
+            .opacity(selectedEmotion == nil ? 0.9 : 1.0)
+        }
     }
 }
 
 // MARK: - Heatmap (simpler, less cluttered)
-struct EmotionIntensityHeatmapContent: View {
+struct EmotionIntensityHeatmap: View, Equatable {
+    static func == (lhs: EmotionIntensityHeatmap, rhs: EmotionIntensityHeatmap) -> Bool {
+        lhs.data == rhs.data && lhs.uniqueEmotions == rhs.uniqueEmotions
+    }
+    
     let data: [EmotionIntensityDataPoint]
     let uniqueEmotions: [EmotionCategory]
     
-    private struct HeatCell: Identifiable {
+    private struct HeatCell: Identifiable, Equatable {
         let id = UUID()
         let date: Date
         let emotion: EmotionCategory
         let intensity: Double
     }
     
-    private var heatCells: [HeatCell] {
-        guard !data.isEmpty else { return [] }
-        let calendar = Calendar.current
-        let firstDate = data.map { $0.timestamp }.min() ?? Date()
-        let start = calendar.startOfDay(for: firstDate)
-        var cells: [HeatCell] = []
-        
-        for offset in 0..<7 {
-            guard let day = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
-            let dayPoints = data.filter { calendar.isDate($0.timestamp, inSameDayAs: day) }
-            let grouped = Dictionary(grouping: dayPoints, by: { $0.emotion })
-            for emotion in uniqueEmotions {
-                let points = grouped[emotion] ?? []
-                let avg = points.isEmpty ? 0.0 : (points.map { $0.intensity }.reduce(0, +) / Double(points.count))
-                cells.append(HeatCell(date: day, emotion: emotion, intensity: avg))
-            }
-        }
-        return cells.sorted { lhs, rhs in
-            if lhs.date == rhs.date { return lhs.emotion.displayName < rhs.emotion.displayName }
-            return lhs.date < rhs.date
-        }
-    }
+    @State private var cachedCells: [HeatCell] = []
     
     var body: some View {
         VStack(spacing: 12) {
@@ -246,7 +215,7 @@ struct EmotionIntensityHeatmapContent: View {
                 Spacer()
             }
             
-            Chart(heatCells) { cell in
+            Chart(cachedCells) { cell in
                 RectangleMark(
                     x: .value("Date", cell.date),
                     y: .value("Emotion", cell.emotion.displayName)
@@ -255,6 +224,7 @@ struct EmotionIntensityHeatmapContent: View {
                 .cornerRadius(2)
             }
             .frame(height: max(180, CGFloat(uniqueEmotions.count) * 24 + 60))
+            .drawingGroup()
             .chartYScale()
             .chartXAxis {
                 AxisMarks { value in
@@ -300,6 +270,32 @@ struct EmotionIntensityHeatmapContent: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.regularMaterial)
         )
+        .task(id: data) {
+            cachedCells = computeHeatCells(data: data, uniqueEmotions: uniqueEmotions)
+        }
+        .transaction { $0.animation = nil }
+    }
+    
+    private func computeHeatCells(data: [EmotionIntensityDataPoint], uniqueEmotions: [EmotionCategory]) -> [HeatCell] {
+        guard !data.isEmpty else { return [] }
+        let calendar = Calendar.current
+        let firstDate = data.map { $0.timestamp }.min() ?? Date()
+        let start = calendar.startOfDay(for: firstDate)
+        var cells: [HeatCell] = []
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
+            let dayPoints = data.filter { calendar.isDate($0.timestamp, inSameDayAs: day) }
+            let grouped = Dictionary(grouping: dayPoints, by: { $0.emotion })
+            for emotion in uniqueEmotions {
+                let points = grouped[emotion] ?? []
+                let avg = points.isEmpty ? 0.0 : (points.map { $0.intensity }.reduce(0, +) / Double(points.count))
+                cells.append(HeatCell(date: day, emotion: emotion, intensity: avg))
+            }
+        }
+        return cells.sorted { lhs, rhs in
+            if lhs.date == rhs.date { return lhs.emotion.displayName < rhs.emotion.displayName }
+            return lhs.date < rhs.date
+        }
     }
 }
 // MARK: - Filter Chip
@@ -429,6 +425,6 @@ struct EmptyEmotionTrendsView: View {
 }
 
 #Preview {
-    EmotionTrendsChart(viewModel: InsightsViewModel())
+    EmotionTrendsChart(data: [], uniqueEmotions: [])
         .padding()
 }

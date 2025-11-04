@@ -17,6 +17,7 @@ struct PersistenceController {
     }()
     
     let container: NSPersistentCloudKitContainer
+    private var remoteChangeObserver: NSObjectProtocol?
     
     init(inMemory: Bool = false) {
         container = NSPersistentCloudKitContainer(name: Config.CoreData.containerName)
@@ -75,7 +76,7 @@ struct PersistenceController {
         
         // Setup remote change notifications if enabled
         if Config.CoreData.enableRemoteChangeNotifications {
-            NotificationCenter.default.addObserver(
+            remoteChangeObserver = NotificationCenter.default.addObserver(
                 forName: .NSPersistentStoreRemoteChange,
                 object: container.persistentStoreCoordinator,
                 queue: .main
@@ -370,101 +371,88 @@ struct PersistenceController {
         let flagKey = "intervention_streak_backfill_v1"
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: flagKey) { return }
-        let context = container.viewContext
-        let cal = Calendar.current
-        do {
-            let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
-            let all = try context.fetch(fetch)
-            guard !all.isEmpty else { defaults.set(true, forKey: flagKey); return }
-            // Group by interventionTitle (fallback to title)
-            var titleToDates: [String: [Date]] = [:]
-            for item in all {
-                let title = item.interventionTitle ?? item.title ?? ""
-                guard !title.isEmpty, let d = item.completedAt else { continue }
-                titleToDates[title, default: []].append(d)
-            }
-            let now = Date()
-            for (title, dates) in titleToDates {
-                // Compute streak from dates
-                let days: Set<Date> = Set(dates.map { cal.startOfDay(for: $0) })
-                guard let mostRecent = days.max() else { continue }
-                var cursor = cal.startOfDay(for: now)
-                if !days.contains(cursor) { cursor = mostRecent }
-                var streak = 0
-                while days.contains(cursor) {
-                    streak += 1
-                    guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
-                    cursor = prev
+        container.performBackgroundTask { context in
+            let cal = Calendar.current
+            do {
+                let fetch: NSFetchRequest<InterventionCompletionEntity> = InterventionCompletionEntity.fetchRequest()
+                let all = try context.fetch(fetch)
+                guard !all.isEmpty else { defaults.set(true, forKey: flagKey); return }
+                var titleToDates: [String: [Date]] = [:]
+                for item in all {
+                    let title = item.interventionTitle ?? item.title ?? ""
+                    guard !title.isEmpty, let d = item.completedAt else { continue }
+                    titleToDates[title, default: []].append(d)
                 }
-                // Upsert InterventionStreakEntity
-                let req: NSFetchRequest<InterventionStreakEntity> = InterventionStreakEntity.fetchRequest()
-                req.predicate = NSPredicate(format: "interventionTitle == %@", title)
-                req.fetchLimit = 1
-                let existing = try context.fetch(req).first
-                let record = existing ?? InterventionStreakEntity(context: context)
-                if existing == nil { record.interventionTitle = title }
-                record.currentStreak = Int32(streak)
-                record.lastActiveDay = mostRecent
-                record.updatedAt = Date()
+                let now = Date()
+                for (title, dates) in titleToDates {
+                    let days: Set<Date> = Set(dates.map { cal.startOfDay(for: $0) })
+                    guard let mostRecent = days.max() else { continue }
+                    var cursor = cal.startOfDay(for: now)
+                    if !days.contains(cursor) { cursor = mostRecent }
+                    var streak = 0
+                    while days.contains(cursor) {
+                        streak += 1
+                        guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
+                        cursor = prev
+                    }
+                    let req: NSFetchRequest<InterventionStreakEntity> = InterventionStreakEntity.fetchRequest()
+                    req.predicate = NSPredicate(format: "interventionTitle == %@", title)
+                    req.fetchLimit = 1
+                    let existing = try context.fetch(req).first
+                    let record = existing ?? InterventionStreakEntity(context: context)
+                    if existing == nil { record.interventionTitle = title }
+                    record.currentStreak = Int32(streak)
+                    record.lastActiveDay = mostRecent
+                    record.updatedAt = Date()
+                }
+                try context.save()
+                defaults.set(true, forKey: flagKey)
+            } catch {
+                // swallow errors in background maintenance
             }
-            try context.save()
-            defaults.set(true, forKey: flagKey)
-
-        } catch {
-     
         }
     }
     
     // MARK: - Data Cleanup
     func deleteOldData(olderThan days: Int = 90) {
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        
-        let request: NSFetchRequest<NSFetchRequestResult> = EmotionalDataEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "timestamp < %@", cutoffDate as NSDate)
-        
-        let deleteRequest = NSBatchDeleteRequest(fetchRequest: request)
-        
-        do {
-            try container.viewContext.execute(deleteRequest)
-            save()
-            
-        } catch {
-
+        container.performBackgroundTask { context in
+            let request: NSFetchRequest<NSFetchRequestResult> = EmotionalDataEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "timestamp < %@", cutoffDate as NSDate)
+            let deleteRequest = NSBatchDeleteRequest(fetchRequest: request)
+            do {
+                try context.execute(deleteRequest)
+            } catch {
+                // swallow errors in background maintenance
+            }
         }
     }
     
     func cleanupDuplicateEmotionalData() {
-        let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
-        
-        do {
-            let allRecords = try container.viewContext.fetch(request)
-            var seenTimestamps: Set<Date> = []
-            var duplicatesToDelete: [EmotionalDataEntity] = []
-            
-            for record in allRecords.sorted(by: { ($0.timestamp ?? Date()) < ($1.timestamp ?? Date()) }) {
-                guard let timestamp = record.timestamp else { continue }
-                
-                // Round to nearest second to handle minor timestamp differences
-                let roundedTimestamp = Date(timeIntervalSinceReferenceDate: timestamp.timeIntervalSinceReferenceDate.rounded())
-                
-                if seenTimestamps.contains(roundedTimestamp) {
-                    duplicatesToDelete.append(record)
-                } else {
-                    seenTimestamps.insert(roundedTimestamp)
+        container.performBackgroundTask { context in
+            let request: NSFetchRequest<EmotionalDataEntity> = EmotionalDataEntity.fetchRequest()
+            do {
+                let allRecords = try context.fetch(request)
+                var seenTimestamps: Set<Date> = []
+                var duplicatesToDelete: [EmotionalDataEntity] = []
+                for record in allRecords.sorted(by: { ($0.timestamp ?? Date()) < ($1.timestamp ?? Date()) }) {
+                    guard let timestamp = record.timestamp else { continue }
+                    let roundedTimestamp = Date(timeIntervalSinceReferenceDate: timestamp.timeIntervalSinceReferenceDate.rounded())
+                    if seenTimestamps.contains(roundedTimestamp) {
+                        duplicatesToDelete.append(record)
+                    } else {
+                        seenTimestamps.insert(roundedTimestamp)
+                    }
                 }
+                for duplicate in duplicatesToDelete {
+                    context.delete(duplicate)
+                }
+                if !duplicatesToDelete.isEmpty {
+                    try context.save()
+                }
+            } catch {
+                // swallow errors in background maintenance
             }
-            
-            // Delete duplicates
-            for duplicate in duplicatesToDelete {
-                container.viewContext.delete(duplicate)
-            }
-            
-            if !duplicatesToDelete.isEmpty {
-                try container.viewContext.save()
-            
-            }
-        } catch {
-           
         }
     }
 

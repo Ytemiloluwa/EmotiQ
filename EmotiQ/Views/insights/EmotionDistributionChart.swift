@@ -10,7 +10,7 @@ import SwiftUI
 import Charts
 
 struct EmotionDistributionChart: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    let data: [EmotionDistributionData]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -18,12 +18,13 @@ struct EmotionDistributionChart: View {
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            if viewModel.emotionDistribution.isEmpty {
+            if data.isEmpty {
                 EmptyDistributionView()
             } else {
-                DistributionChartContent(data: viewModel.emotionDistribution)
+                DistributionChartContent(data: data)
             }
         }
+        .transaction { $0.animation = nil }
     }
 }
 
@@ -71,6 +72,7 @@ struct DistributionPieChart: View {
             }
         }
         .frame(height: 200)
+        .drawingGroup()
     }
 }
 
@@ -131,5 +133,5 @@ struct EmptyDistributionView: View {
 }
 
 #Preview {
-    EmotionDistributionChart(viewModel: InsightsViewModel())
+    EmotionDistributionChart(data: [])
 }
