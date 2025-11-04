@@ -124,7 +124,7 @@ struct SupportInfoView: View {
                         FullWidthSettingsRow(
                             icon: "info.circle",
                             title: "Version",
-                            subtitle: "1.1.1",
+                            subtitle: "1.1.2",
                             action: { }
                         )
                     }
