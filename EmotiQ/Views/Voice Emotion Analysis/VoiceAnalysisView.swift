@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import AVFoundation
+//import AVFoundation
 
 // MARK: - Voice Analysis View
 struct VoiceAnalysisView: View {

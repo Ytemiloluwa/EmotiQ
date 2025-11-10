@@ -7,7 +7,6 @@
 
 import Foundation
 import SwiftUI
-import PDFKit
 
 @MainActor
 class ScreenshotPDFExportManager: ObservableObject {
