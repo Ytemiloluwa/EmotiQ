@@ -21,7 +21,7 @@ EmotiQ is a production-grade iOS app that analyzes voice to infer emotion, deliv
 ---
 
 ### Technologies Used
-- **Language & UI**: Swift 5.10, SwiftUI, UIKit (interop), Combine
+- **Language & UI**: Swift 5.10, SwiftUI, Combine
 - **Audio & ML**: AVFoundation, CoreML, Accelerate/vDSP, Speech, NaturalLanguage
 - **Charts & Rendering**: Swift Charts, `UIGraphicsPDFRenderer`, GPU offloading with `.drawingGroup()`
 - **Persistence**: Core Data with CloudKit, Persistent History Tracking
@@ -35,31 +35,32 @@ EmotiQ is a production-grade iOS app that analyzes voice to infer emotion, deliv
 
 ### Screenshots
 
-Place the images below at `docs/images/` using these filenames (or update the paths):
 
-![MicroIntervention and Custom Affirmations](docs/images/microintervention_custom_affirmations.jpg)
-![Emotions Unlocked](docs/images/emotions_unlocked.jpg)
-![Completed Emotional Goals](docs/images/completed_emotional_goals.jpg)
-![Voice Setup](docs/images/voice_setup.jpg)
-![Emotional Prompts](docs/images/emotional_prompts.jpg)
-![Insights](docs/images/insights.jpg)
-![Personalized Coaching](docs/images/personalized_coaching.jpg)
-![Speak & Discover](docs/images/speak_and_discover.jpg)
-![Microintervention Streaks](docs/images/microintervention_streaks.jpg)
-![Voice Affirmations](docs/images/voice_affirmations.jpg)
-
-> If you prefer different names, keep them under `docs/images/` and update the links above.
+<div align="center">
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; justify-items: center;">
+    <img src="https://github.com/user-attachments/assets/11fe68e3-8cb2-4a21-8b06-1c4dd055ca17" width="280" alt="10" />
+    <img src="https://github.com/user-attachments/assets/f6a664f9-7ff0-4fa9-9da3-7a77fd550ced" width="280" alt="09" />
+    <img src="https://github.com/user-attachments/assets/fc2ae144-07a5-4da0-ac4b-3f5b519022f9" width="280" alt="08" />
+    <img src="https://github.com/user-attachments/assets/19c7f154-f92f-4231-b0c6-63d4671b4409" width="280" alt="07" />
+    <img src="https://github.com/user-attachments/assets/f58fe2cb-0006-4674-a4d0-675d183bb538" width="280" alt="06" />
+    <img src="https://github.com/user-attachments/assets/6f9bb191-e4c4-409c-be46-16e43d891017" width="280" alt="05" />
+    <img src="https://github.com/user-attachments/assets/dc938e11-c987-42f6-9b64-94b8924f624f" width="280" alt="04" />
+    <img src="https://github.com/user-attachments/assets/1ebff362-1985-4207-b6ae-9e60e0825d97" width="280" alt="03" />
+    <img src="https://github.com/user-attachments/assets/c00592e5-bd6d-4b12-b7b0-cc69844d3563" width="280" alt="02" />
+    <img src="https://github.com/user-attachments/assets/d903a5d2-415c-43fa-aa7f-d275705ccaba" width="280" alt="01" />
+  </div>
+</div>
 
 ---
 
 ### Architecture
 - **UI**: SwiftUI with MVVM
-  - Views in `EmotiQ/Views/**`
-  - View models in `EmotiQ/ViewModels/**`
+  - Views in `EmotiQ/Views/`
+  - View models in `EmotiQ/ViewModels/`
 - **Domain & Services**
   - Emotion analysis: `CoreMLEmotionService`, `EmotionAnalysisService`, `SpeechAnalysisService`, `AudioProcessingService`, `VoiceRecordingService`
   - Coaching & interventions: `Services/CoachingService`, views under `Views/Interventions` and `Elevenlabs/Views`
-  - Notifications & prediction: `OneSignal/**`
+  - Notifications & prediction: `OneSignal/`
   - Subscriptions: `RevenueCatService`, `SubscriptionService`, `SecurePurchaseManager`
   - Persistence & analytics: `Utilities/PersistenceController`, `Models/**`
 - **Rendering/Export**
@@ -96,7 +97,7 @@ Key design principles:
   - Predictive nudges via `SmartNotificationScheduler` and `EmotionalInterventionPredictor`
 - **Subscriptions**
   - RevenueCat configuration in `AppDelegate` via `RevenueCatService.configure()`
-  - Paywalls in `Views/Paywalls/**`, product IDs in `Config.Subscription`
+  - Paywalls in `Views/Paywalls/`, product IDs in `Config.Subscription`
   - `SubscriptionService` exposes entitlements and gating for premium features
 
 ---
@@ -153,19 +154,19 @@ Key design principles:
 
 ### Project Structure
 - `EmotiQApp.swift`: App lifecycle and third‑party initialization
-- `Views/**`: SwiftUI screens (Dashboard, Voice Check, Insights, Coaching, Profile)
-- `ViewModels/**`: View models for state and transformations
-- `Services/**`: Audio/ML, coaching, subscriptions, storage
-- `Elevenlabs/**`: ElevenLabs services and views (voice synthesis, caching, interventions)
-- `OneSignal/**`: Notification services, predictors, schedulers
-- `Utilities/**`: Config, PDF rendering, persistence, theming
-- `Models/**`: Core models and enums
-- `OneSignalNotificationServiceExtension/**`: Notification extension target
+- `Views/`: SwiftUI screens (Dashboard, Voice Check, Insights, Coaching, Profile)
+- `ViewModels/`: View models for state and transformations
+- `Services/`: Audio/ML, coaching, subscriptions, storage
+- `Elevenlabs/`: ElevenLabs services and views (voice synthesis, caching, interventions)
+- `OneSignal/`: Notification services, predictors, schedulers
+- `Utilities/`: Config, PDF rendering, persistence, theming
+- `Models/`: Core models and enums
+- `OneSignalNotificationServiceExtension/`: Notification extension target
 
 ---
 
 ### ElevenLabs Module
-- Location: `EmotiQ/Elevenlabs/**`
+- Location: `EmotiQ/Elevenlabs/`
 - Purpose: Voice cloning, TTS generation for affirmations and interventions, caching, playback, and haptic-enhanced UX.
 
 - Services (`Elevenlabs/Service`):
